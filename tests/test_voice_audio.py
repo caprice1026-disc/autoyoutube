@@ -9,7 +9,14 @@ from src.voice.audio_merge import merge_wav_files
 from src.voice.duration import get_wav_duration
 
 
-def _write_silent_wav(path: Path, duration_sec: float, *, framerate: int = 8000, channels: int = 1, sample_width: int = 2) -> None:
+def _write_silent_wav(
+    path: Path,
+    duration_sec: float,
+    *,
+    framerate: int = 8000,
+    channels: int = 1,
+    sample_width: int = 2,
+) -> None:
     frames = int(duration_sec * framerate)
     with wave.open(str(path), "wb") as wav:
         wav.setnchannels(channels)

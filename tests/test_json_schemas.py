@@ -8,7 +8,9 @@ from jsonschema import Draft202012Validator
 ROOT_DIR = Path(__file__).resolve().parent.parent
 PROJECT_SCHEMA_PATH = ROOT_DIR / "schemas" / "project.youtube.schema.json"
 RENDERED_SCHEMA_PATH = ROOT_DIR / "schemas" / "rendered.youtube.schema.json"
-SAMPLE_PROJECT_PATH = ROOT_DIR / "projects" / "trivia_submarine_black_001" / "project.youtube.json"
+SAMPLE_PROJECT_PATH = (
+    ROOT_DIR / "projects" / "trivia_submarine_black_001" / "project.youtube.json"
+)
 
 
 def _load_json(path: Path) -> dict:

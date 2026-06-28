@@ -25,10 +25,18 @@ class RecordingTransport:
         ]
         return "application/json", json.dumps(speakers).encode("utf-8")
 
-    def post(self, path: str, query: dict[str, str], body: bytes | None, content_type: str | None) -> tuple[str, bytes]:
+    def post(
+        self,
+        path: str,
+        query: dict[str, str],
+        body: bytes | None,
+        content_type: str | None,
+    ) -> tuple[str, bytes]:
         self.calls.append(("POST", path, query, body, content_type))
         if path == "/audio_query":
-            return "application/json", json.dumps({"speedScale": 1.0, "pitchScale": 0.0, "intonationScale": 1.0}).encode("utf-8")
+            return "application/json", json.dumps(
+                {"speedScale": 1.0, "pitchScale": 0.0, "intonationScale": 1.0}
+            ).encode("utf-8")
         if path == "/synthesis":
             return "audio/wav", b"RIFFfake-wav"
         raise AssertionError(f"unexpected path: {path}")
@@ -49,9 +57,18 @@ def test_aivis_client_creates_query_then_synthesizes_wav(tmp_path: Path) -> None
     )
 
     assert output_path.read_bytes() == b"RIFFfake-wav"
-    assert transport.calls[0][:3] == ("POST", "/audio_query", {"text": "hello", "speaker": "888753760"})
+    assert transport.calls[0][:3] == (
+        "POST",
+        "/audio_query",
+        {"text": "hello", "speaker": "888753760"},
+    )
     method, path, query, body, content_type = transport.calls[1]
-    assert (method, path, query, content_type) == ("POST", "/synthesis", {"speaker": "888753760"}, "application/json")
+    assert (method, path, query, content_type) == (
+        "POST",
+        "/synthesis",
+        {"speaker": "888753760"},
+        "application/json",
+    )
     assert body is not None
     sent_query: dict[str, Any] = json.loads(body.decode("utf-8"))
     assert sent_query["speedScale"] == pytest.approx(1.2)
@@ -59,7 +76,9 @@ def test_aivis_client_creates_query_then_synthesizes_wav(tmp_path: Path) -> None
     assert sent_query["intonationScale"] == pytest.approx(0.8)
 
 
-def test_aivis_client_resolves_speaker_name_from_speakers_endpoint(tmp_path: Path) -> None:
+def test_aivis_client_resolves_speaker_name_from_speakers_endpoint(
+    tmp_path: Path,
+) -> None:
     transport = RecordingTransport()
     client = AivisSpeechClient(transport=transport)
 
@@ -73,4 +92,24 @@ def test_aivis_client_resolves_speaker_name_from_speakers_endpoint(tmp_path: Pat
     )
 
     assert transport.calls[0][:3] == ("GET", "/speakers", {})
-    assert transport.calls[1][:3] == ("POST", "/audio_query", {"text": "hello", "speaker": "888753760"})
+    assert transport.calls[1][:3] == (
+        "POST",
+        "/audio_query",
+        {"text": "hello", "speaker": "888753760"},
+    )
+
+
+def test_aivis_client_uses_environment_base_url(monkeypatch) -> None:
+    monkeypatch.setenv("AIVIS_SPEECH_BASE_URL", "http://aivis-engine:10101")
+
+    client = AivisSpeechClient()
+
+    assert client.transport.base_url == "http://aivis-engine:10101"
+
+
+def test_aivis_client_explicit_base_url_overrides_environment(monkeypatch) -> None:
+    monkeypatch.setenv("AIVIS_SPEECH_BASE_URL", "http://aivis-engine:10101")
+
+    client = AivisSpeechClient(base_url="http://127.0.0.1:10101")
+
+    assert client.transport.base_url == "http://127.0.0.1:10101"
