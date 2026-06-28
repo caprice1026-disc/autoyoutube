@@ -1,1 +1,200 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://local.trivia-shorts/rendered.youtube.schema.json","title":"Trivia Shorts YouTube Rendered JSON","type":"object","additionalProperties":false,"required":["schema_version","platform_profile","project_id","render_id","status","created_at","completed_at","input","output","target","voice","audio","bgm","visuals","subtitles","youtube","credits","ffmpeg","validation","manual_review"],"properties":{"schema_version":{"const":"rendered-youtube-1.0.0"},"platform_profile":{"const":"youtube_shorts"},"project_id":{"type":"string","pattern":"^[a-zA-Z0-9_-]{3,64}$"},"render_id":{"type":"string","pattern":"^[a-zA-Z0-9_-]{3,100}$"},"status":{"enum":["success","partial_success","failed"]},"created_at":{"type":"string","format":"date-time"},"completed_at":{"type":"string","format":"date-time"},"input":{"type":"object","additionalProperties":true,"required":["project_json_path","project_json_hash","project_schema_path"]},"output":{"type":"object","additionalProperties":true,"required":["video_path","subtitle_ass_path","description_path","credits_path","rendered_json_path"]},"target":{"type":"object","additionalProperties":true,"required":["planned_duration_sec","actual_duration_sec","aspect_ratio","resolution","fps","video_format"]},"voice":{"type":"object","additionalProperties":true,"required":["engine","speaker","speed_scale","pitch_scale","intonation_scale","sentence_gap_ms","sample_rate","audio_format"]},"audio":{"type":"object","additionalProperties":true,"required":["narration_files","merged_narration_path","merged_narration_duration_sec","final_audio_path","final_audio_duration_sec"]},"bgm":{"type":"object","additionalProperties":true,"required":["enabled"]},"visuals":{"type":"array","minItems":1},"subtitles":{"type":"object","additionalProperties":true,"required":["format","style","items"]},"youtube":{"type":"object","additionalProperties":true,"required":["title","description","hashtags","tags","category_hint","privacy_status","made_for_kids","contains_synthetic_voice","description_path","upload"]},"thumbnail":{"type":"object"},"credits":{"type":"object","additionalProperties":true,"required":["required","items","description_text"]},"ffmpeg":{"type":"object","additionalProperties":true,"required":["version","command_log_path","stderr_log_path","video_codec","audio_codec","pix_fmt","preset","crf"]},"validation":{"type":"object","additionalProperties":true,"required":["project_json_valid","rendered_json_valid","warnings","errors"]},"manual_review":{"type":"object","additionalProperties":true,"required":["required","fact_check_required","checked","publish_ready","notes"]}}}
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://local.trivia-shorts/rendered.youtube.schema.json",
+    "title": "Trivia Shorts YouTube Rendered JSON",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+        "schema_version",
+        "platform_profile",
+        "project_id",
+        "render_id",
+        "status",
+        "created_at",
+        "completed_at",
+        "input",
+        "output",
+        "target",
+        "voice",
+        "audio",
+        "bgm",
+        "visuals",
+        "subtitles",
+        "youtube",
+        "credits",
+        "ffmpeg",
+        "validation",
+        "manual_review"
+    ],
+    "properties": {
+        "schema_version": {
+            "const": "rendered-youtube-1.0.0"
+        },
+        "platform_profile": {
+            "const": "youtube_shorts"
+        },
+        "project_id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]{3,64}$"
+        },
+        "render_id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_-]{3,100}$"
+        },
+        "status": {
+            "enum": [
+                "success",
+                "partial_success",
+                "failed"
+            ]
+        },
+        "created_at": {
+            "type": "string",
+            "format": "date-time"
+        },
+        "completed_at": {
+            "type": "string",
+            "format": "date-time"
+        },
+        "input": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+                "project_json_path",
+                "project_json_hash",
+                "project_schema_path"
+            ]
+        },
+        "output": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+                "video_path",
+                "subtitle_ass_path",
+                "description_path",
+                "credits_path",
+                "rendered_json_path"
+            ]
+        },
+        "target": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+                "planned_duration_sec",
+                "actual_duration_sec",
+                "aspect_ratio",
+                "resolution",
+                "fps",
+                "video_format"
+            ]
+        },
+        "voice": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+                "engine",
+                "speaker",
+                "speed_scale",
+                "pitch_scale",
+                "intonation_scale",
+                "sentence_gap_ms",
+                "sample_rate",
+                "audio_format"
+            ]
+        },
+        "audio": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+                "narration_files",
+                "merged_narration_path",
+                "merged_narration_duration_sec",
+                "final_audio_path",
+                "final_audio_duration_sec"
+            ]
+        },
+        "bgm": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+                "enabled"
+            ]
+        },
+        "visuals": {
+            "type": "array",
+            "minItems": 1
+        },
+        "subtitles": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+                "format",
+                "style",
+                "items"
+            ]
+        },
+        "youtube": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+                "title",
+                "description",
+                "hashtags",
+                "tags",
+                "category_hint",
+                "privacy_status",
+                "made_for_kids",
+                "contains_synthetic_voice",
+                "description_path",
+                "upload"
+            ]
+        },
+        "thumbnail": {
+            "type": "object"
+        },
+        "credits": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+                "required",
+                "items",
+                "description_text"
+            ]
+        },
+        "ffmpeg": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+                "version",
+                "command_log_path",
+                "stderr_log_path",
+                "video_codec",
+                "audio_codec",
+                "pix_fmt",
+                "preset",
+                "crf"
+            ]
+        },
+        "validation": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+                "project_json_valid",
+                "rendered_json_valid",
+                "warnings",
+                "errors"
+            ]
+        },
+        "manual_review": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": [
+                "required",
+                "fact_check_required",
+                "checked",
+                "publish_ready",
+                "notes"
+            ]
+        }
+    }
+}
