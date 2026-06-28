@@ -145,3 +145,34 @@ def test_media_assets_round_trip_through_database(tmp_path: Path) -> None:
         loaded = list_active_media_assets(connection)
 
     assert loaded == [asset]
+
+
+def test_pexels_media_asset_round_trip_keeps_source_metadata(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "test.db"
+    init_db(db_path)
+    asset = MediaAsset(
+        asset_id="pexels_20349819_deep_ocean",
+        source="pexels",
+        local_file_path=tmp_path / "pexels_20349819_deep_ocean.mp4",
+        original_width=1080,
+        original_height=1920,
+        original_duration_sec=12.0,
+        orientation="portrait",
+        selected_quality="hd",
+        query="deep ocean",
+        tags=["deep", "ocean"],
+        pexels_id="20349819",
+        photographer="Pexels Creator",
+        photographer_url="https://www.pexels.com/@creator",
+        pexels_url="https://www.pexels.com/video/deep-ocean-20349819/",
+        original_video_url="https://videos.pexels.com/video-files/hd.mp4",
+    )
+
+    with sqlite3.connect(db_path) as connection:
+        connection.row_factory = sqlite3.Row
+        upsert_media_assets(connection, [asset])
+        loaded = list_active_media_assets(connection)
+
+    assert loaded == [asset]
