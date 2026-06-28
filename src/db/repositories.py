@@ -336,12 +336,18 @@ def upsert_media_assets(
         connection.execute(
             """
             INSERT INTO media_assets (
-                asset_id, source, local_file_path, original_width, original_height,
+                asset_id, source, pexels_id, photographer, photographer_url,
+                pexels_url, original_video_url, local_file_path, original_width, original_height,
                 original_duration_sec, orientation, selected_quality, query,
                 tags_json, used_count, is_active
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(asset_id) DO UPDATE SET
                 source = excluded.source,
+                pexels_id = excluded.pexels_id,
+                photographer = excluded.photographer,
+                photographer_url = excluded.photographer_url,
+                pexels_url = excluded.pexels_url,
+                original_video_url = excluded.original_video_url,
                 local_file_path = excluded.local_file_path,
                 original_width = excluded.original_width,
                 original_height = excluded.original_height,
@@ -355,6 +361,11 @@ def upsert_media_assets(
             (
                 asset.asset_id,
                 asset.source,
+                asset.pexels_id,
+                asset.photographer,
+                asset.photographer_url,
+                asset.pexels_url,
+                asset.original_video_url,
                 str(asset.local_file_path),
                 asset.original_width,
                 asset.original_height,
@@ -373,7 +384,8 @@ def list_active_media_assets(connection: sqlite3.Connection) -> list[MediaAsset]
     rows = connection.execute(
         """
         SELECT
-            asset_id, source, local_file_path, original_width, original_height,
+            asset_id, source, pexels_id, photographer, photographer_url,
+            pexels_url, original_video_url, local_file_path, original_width, original_height,
             original_duration_sec, orientation, selected_quality, query,
             tags_json, used_count, is_active
         FROM media_assets
@@ -414,6 +426,11 @@ def _media_asset_from_row(row: sqlite3.Row) -> MediaAsset:
         asset_id=row["asset_id"],
         source=row["source"],
         local_file_path=Path(row["local_file_path"]),
+        pexels_id=row["pexels_id"],
+        photographer=row["photographer"],
+        photographer_url=row["photographer_url"],
+        pexels_url=row["pexels_url"],
+        original_video_url=row["original_video_url"],
         original_width=row["original_width"],
         original_height=row["original_height"],
         original_duration_sec=row["original_duration_sec"],

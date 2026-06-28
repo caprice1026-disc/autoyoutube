@@ -14,11 +14,13 @@ from src.db.repositories import (
     upsert_bgm_tracks,
     upsert_media_assets,
 )
+from src.env import load_dotenv
 from src.errors import AppError
 from src.media.library import load_media_manifest
+from src.media.pexels_client import PexelsClient
 from src.pipeline.render_project import render_project
 from src.render.ffmpeg_renderer import FfmpegVideoRenderer
-from src.validators.json_validator import validate_json_file
+from src.validators.json_validator import load_json, validate_json_file
 from src.voice.aivis_client import AivisSpeechClient
 
 
@@ -41,6 +43,18 @@ def main() -> int:
     )
     im.add_argument("manifest_path")
     sub.add_parser("list-assets", help="list active media assets")
+    cp = sub.add_parser("check-pexels", help="check Pexels API connectivity")
+    cp.add_argument("query")
+    cp.add_argument("--per-page", type=int, default=1)
+    cp.add_argument("--orientation", default="portrait")
+    cp.add_argument("--size", default="small")
+    fp = sub.add_parser("fetch-pexels", help="fetch Pexels videos for a project JSON")
+    fp.add_argument("project_path")
+    fp.add_argument("--output-dir", default="assets/pexels")
+    fp.add_argument("--per-query", type=int, default=1)
+    fp.add_argument("--max-downloads", type=int)
+    fp.add_argument("--orientation", default="portrait")
+    fp.add_argument("--size", default="small")
     rr = sub.add_parser("render", help="render project assets")
     rr.add_argument("path")
     rr.add_argument("--voice-mode", choices=["dry-run", "aivis"], default="dry-run")
@@ -50,6 +64,7 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
+        load_dotenv()
         if args.command == "init-db":
             init_db()
             print("Initialized DB: data/trivia_shorts.db")
@@ -66,6 +81,22 @@ def main() -> int:
             return _import_media(Path(args.manifest_path))
         if args.command == "list-assets":
             return _list_assets()
+        if args.command == "check-pexels":
+            return _check_pexels(
+                args.query,
+                per_page=args.per_page,
+                orientation=args.orientation,
+                size=args.size,
+            )
+        if args.command == "fetch-pexels":
+            return _fetch_pexels(
+                Path(args.project_path),
+                output_dir=Path(args.output_dir),
+                per_query=args.per_query,
+                max_downloads=args.max_downloads,
+                orientation=args.orientation,
+                size=args.size,
+            )
         if args.command == "render":
             voice_service = (
                 AivisSpeechClient(base_url=args.aivis_base_url)
@@ -158,6 +189,94 @@ def _list_assets() -> int:
             f"{asset.asset_id}\t{asset.source}\t{asset.orientation}\t{asset.query}\t{asset.local_file_path}"
         )
     return 0
+
+
+def _check_pexels(
+    query: str, *, per_page: int, orientation: str | None, size: str | None
+) -> int:
+    client = PexelsClient()
+    videos = client.search_videos(
+        query,
+        per_page=per_page,
+        orientation=orientation,
+        size=size,
+    )
+    print(f"Pexels search succeeded: query={query} returned={len(videos)}")
+    if videos:
+        first = videos[0]
+        files = (
+            first.get("video_files")
+            if isinstance(first.get("video_files"), list)
+            else []
+        )
+        print(
+            f"first_id={first.get('id')} width={first.get('width')} height={first.get('height')} files={len(files)}"
+        )
+    return 0
+
+
+def _fetch_pexels(
+    project_path: Path,
+    *,
+    output_dir: Path,
+    per_query: int,
+    max_downloads: int | None,
+    orientation: str | None,
+    size: str | None,
+) -> int:
+    queries = _pexels_queries_from_project(project_path)
+    if not queries:
+        raise AppError(
+            "No Pexels search queries were found.",
+            location=str(project_path),
+            next_step="Add visual_strategy.primary_query, fallback_queries, or script visual_query values.",
+        )
+    client = PexelsClient()
+    assets = client.fetch_assets_for_queries(
+        queries,
+        output_dir=output_dir,
+        per_query=per_query,
+        max_downloads=max_downloads,
+        orientation=orientation,
+        size=size,
+    )
+    init_db()
+    with connect() as connection:
+        upsert_media_assets(connection, assets)
+    print(f"Fetched Pexels assets: {len(assets)}")
+    for asset in assets:
+        print(f"{asset.asset_id}\t{asset.query}\t{asset.local_file_path}")
+    return 0
+
+
+def _pexels_queries_from_project(project_path: Path) -> list[str]:
+    project = load_json(project_path)
+    visual_strategy = project.get("visual_strategy", {})
+    queries: list[str] = []
+    if isinstance(visual_strategy, dict):
+        queries.append(str(visual_strategy.get("primary_query") or ""))
+    script = project.get("script", [])
+    if isinstance(script, list):
+        for item in script:
+            if isinstance(item, dict):
+                queries.append(str(item.get("visual_query") or ""))
+    if isinstance(visual_strategy, dict):
+        fallback_queries = visual_strategy.get("fallback_queries", [])
+        if isinstance(fallback_queries, list):
+            queries.extend(str(query) for query in fallback_queries)
+    return _unique_non_empty(queries)
+
+
+def _unique_non_empty(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        cleaned = value.strip()
+        key = cleaned.lower()
+        if cleaned and key not in seen:
+            seen.add(key)
+            result.append(cleaned)
+    return result
 
 
 if __name__ == "__main__":

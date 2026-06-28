@@ -12,6 +12,7 @@ YouTube Shorts向けの雑学ショート動画を、ローカル環境で半自
 - WAVの実測時間に基づく字幕タイミング生成
 - ローカルBGM manifestのimport、条件選定、FFmpegでのBGMミックス
 - ローカル映像素材manifestのimport、条件選定、FFmpeg背景動画化
+- Pexels APIの疎通確認、動画検索、download、SQLite素材キャッシュ登録
 - FFmpegによる 1080x1920 / H.264 / AAC のMP4生成
 - Docker ComposeによるPythonアプリとAivisSpeech Engine APIサーバーの起動定義
 - CLIエラーの `Error`, `Location`, `Details`, `Next step` 形式での表示
@@ -19,7 +20,6 @@ YouTube Shorts向けの雑学ショート動画を、ローカル環境で半自
 
 未実装または今後の実装対象:
 
-- Pexels APIからの映像素材取得
 - 複数映像素材のタイムライン合成
 - thumbnail.jpg生成
 - 手動レビュー状態更新CLI
@@ -55,6 +55,8 @@ Windowsで `permission denied while trying to connect to the docker API at npipe
 .\.venv\Scripts\python.exe -m src.main import-bgm assets\bgm\bgm_manifest.json
 .\.venv\Scripts\python.exe -m src.main list-bgm
 .\.venv\Scripts\python.exe -m src.main import-media assets\local_media\media_manifest.json
+.\.venv\Scripts\python.exe -m src.main check-pexels "deep ocean" --per-page 1
+.\.venv\Scripts\python.exe -m src.main fetch-pexels projects\trivia_submarine_black_001\project.youtube.json --per-query 1 --max-downloads 1
 .\.venv\Scripts\python.exe -m src.main list-assets
 .\.venv\Scripts\python.exe -m src.main render projects\trivia_submarine_black_001\project.youtube.json --video-mode ffmpeg --ffmpeg-path "C:\path\to\ffmpeg.exe"
 .\.venv\Scripts\python.exe -m src.main validate-render renders\trivia_submarine_black_001\rendered.youtube.json
@@ -131,6 +133,25 @@ $env:AIVIS_SPEECH_BASE_URL = "http://127.0.0.1:10101"
 }
 ```
 
+## Pexels素材取得
+
+Pexels APIキーは `.env` に `PEXELS_API_KEY=...` として設定します。`.env` はGit管理しません。
+
+疎通確認:
+
+```powershell
+.\.venv\Scripts\python.exe -m src.main check-pexels "deep ocean" --per-page 1
+```
+
+project JSONから `visual_strategy.primary_query`, `script[].visual_query`, `visual_strategy.fallback_queries` を集め、重複を除いて検索・download・DB登録します。
+
+```powershell
+.\.venv\Scripts\python.exe -m src.main fetch-pexels projects\trivia_submarine_black_001\project.youtube.json --per-query 1 --max-downloads 1
+.\.venv\Scripts\python.exe -m src.main list-assets
+```
+
+download先は `assets/pexels/` です。登録後のrenderは、既存の `media_assets` 選定経路からPexels素材を選びます。API制限やネットワーク失敗でrender全体が止まることを避けるため、現時点ではrender中に自動検索せず、先に `fetch-pexels` でキャッシュしておく運用です。
+
 ## Docker / AivisSpeech Engine
 
 AivisSpeechのAPIサーバーは `AivisSpeech-Engine` です。ローカルcloneからbuildしたい場合は、リポジトリ直下にcloneします。このディレクトリは `.gitignore` 対象です。
@@ -181,4 +202,4 @@ AivisSpeech Engineのモデルやログは `data/aivis-engine/` に保存され�
 .\.venv\Scripts\python.exe -m ruff format . --check
 ```
 
-現在のテストは、JSON検証、CLIエラー表示、AivisSpeechクライアント、音声結合、BGM登録/選定、ローカル映像素材登録/選定、Docker Compose設定、FFmpegコマンド生成、レンダーパイプラインを対象にしています。
+現在のテストは、JSON検証、CLIエラー表示、AivisSpeechクライアント、音声結合、BGM登録/選定、ローカル映像素材登録/選定、Pexels APIクライアント、Docker Compose設定、FFmpegコマンド生成、レンダーパイプラインを対象にしています。

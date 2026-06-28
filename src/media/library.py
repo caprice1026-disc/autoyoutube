@@ -20,6 +20,11 @@ class MediaAsset:
     selected_quality: str
     query: str
     tags: list[str]
+    pexels_id: str | None = None
+    photographer: str | None = None
+    photographer_url: str | None = None
+    pexels_url: str | None = None
+    original_video_url: str | None = None
     used_count: int = 0
     is_active: bool = True
 
@@ -78,6 +83,11 @@ def _parse_asset(
         selected_quality=str(item.get("selected_quality") or "unknown"),
         query=str(item.get("query") or ""),
         tags=[str(tag) for tag in tags],
+        pexels_id=_optional_str(item.get("pexels_id")),
+        photographer=_optional_str(item.get("photographer")),
+        photographer_url=_optional_str(item.get("photographer_url")),
+        pexels_url=_optional_str(item.get("pexels_url")),
+        original_video_url=_optional_str(item.get("original_video_url")),
         used_count=int(item.get("used_count", 0)),
         is_active=bool(item.get("is_active", True)),
     )
@@ -121,6 +131,13 @@ def _optional_float(value: Any) -> float | None:
     if value is None:
         return None
     return float(value)
+
+
+def _optional_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    return text if text else None
 
 
 def _infer_orientation(width: Any, height: Any) -> str:

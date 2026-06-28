@@ -11,7 +11,7 @@
 - 作業ツリーは、メモ更新前の時点では `origin/codex-error-handling-bgm` と同期済みでした。
 - Python実行はユーザー作成済みの `.venv` を使う前提です。
 - `requirements.txt` には `jsonschema`, `pytest`, `ruff` が入っています。
-- 直近の確認では `ruff check .`, `ruff format . --check`, `pytest -q` が成功し、pytestは `34 passed` でした。
+- 直近の確認では `ruff check .`, `ruff format . --check`, `pytest -q` が成功し、pytestは `41 passed` でした。
 - `pytest.ini` でテスト収集対象を `tests/` に限定しています。これは、ローカルにcloneした外部リポジトリ `AivisSpeech-Engine/` のテストを誤って収集しないためです。
 
 ## Docker / AivisSpeech Engine の現状
@@ -90,8 +90,9 @@ Docker周りは現状実装を正とします。
 
 ### 映像素材
 
-- Pexels本実装はまだありません。
-- 代わりに、ローカル映像素材manifestを `import-media` でDB登録できます。
+- `.env` の `PEXELS_API_KEY` を使い、`check-pexels` でPexels APIの疎通確認ができます。
+- `fetch-pexels` はproject JSONから検索語を集め、Pexels動画を `assets/pexels/` へdownloadし、`media_assets` へ登録します。
+- ローカル映像素材manifestも `import-media` でDB登録できます。
 - `visual_query`, `source_priority`, `avoid_keywords`, `used_count` を見てローカル素材を選定します。
 - 選定素材は `rendered.youtube.json.visuals` と `render_visual_items` に残します。
 - FFmpeg背景動画として最初に選ばれた素材をループ利用できます。
@@ -108,7 +109,7 @@ Docker周りは現状実装を正とします。
 
 - READMEは現在のCLI、Docker、AivisSpeech Engine、BGM、映像素材manifest、検証手順を反映済みです。
 - `.agent/20260628_local_media_assets.md` と `.agent/20260628_docker_compose_aivis.md` に実装計画と結果を残しています。
-- テストはJSON検証、CLIエラー、AivisSpeechクライアント、BGM、ローカル映像素材、Docker Compose設定、FFmpegコマンド、レンダーパイプラインを対象にしています。
+- テストはJSON検証、CLIエラー、AivisSpeechクライアント、BGM、ローカル映像素材、Pexels APIクライアント、Docker Compose設定、FFmpegコマンド、レンダーパイプラインを対象にしています。
 
 ## 要件定義書に対する進捗
 
@@ -137,10 +138,12 @@ Docker周りは現状実装を正とします。
 
 ### Phase 4: Pexels連携
 
-状態: 未実装
+状態: 最小実装済み、render中自動取得と複数素材合成は未完
 
-- Pexels API検索、download、portrait優先、横動画fallback、Pexelsメタデータ保存は未実装です。
-- ただし `media_assets` と `render_visual_items`、ローカル映像素材登録、素材選定、FFmpeg背景化は実装済みなので、Pexels実装の受け皿はあります。
+- `check-pexels` でAPI疎通を確認できます。
+- `fetch-pexels` でPexels API検索、portrait優先検索、download、Pexelsメタデータ保存ができます。
+- 登録済みPexels素材は `media_assets` から選定され、`rendered.youtube.json.visuals` に `pexels_id` などの情報が残ります。
+- render中の自動Pexels検索、文ごとの複数素材切り替え、より詳細なPexelsレート制限対策は未実装です。
 
 ### Phase 5: BGM連携
 
@@ -166,15 +169,16 @@ Docker周りは現状実装を正とします。
 
 ## 現在の主なギャップ
 
-1. Pexels API連携がない
-   - 要件上の中核機能ですが、現状はローカル映像素材で代替しています。
-
-2. 話者管理が弱い
+1. 話者管理が弱い
    - AivisSpeechの話者名/style IDを一覧表示・検証するCLIがありません。
    - サンプルprojectの `Anneli` は、確認済みのDocker初期モデルと一致していません。
 
-3. render結果のDB正規化が未完
+2. render結果のDB正規化が未完
    - raw JSON保存はありますが、要件上の全render系テーブルへはまだ保存していません。
+
+3. Pexelsはキャッシュ型で、render中自動検索はまだない
+   - `fetch-pexels` で先に素材を取る運用です。
+   - API制限やネットワーク失敗をrenderから切り離せる一方、完全自動renderにはまだ届いていません。
 
 4. 複数映像素材のタイムライン合成がない
    - script itemごとのvisual情報は出ますが、FFmpeg背景は最初の素材を全体にループしています。
@@ -195,13 +199,10 @@ Docker周りは現状実装を正とします。
    - `project.youtube.json` のspeakerが利用可能か事前検証する。
    - サンプルprojectをDocker初期モデルで動く話者、またはstyle IDへ更新する。
 
-2. Pexels API連携
-   - `PEXELS_API_KEY` を環境変数から読む。
-   - `visual_query`, `primary_query`, `fallback_queries` で検索する。
-   - portrait優先で素材を選ぶ。
-   - 横動画fallbackを許可する。
-   - `assets/pexels/` へdownloadし、`media_assets` に保存する。
-   - `used_count` / `last_used_at` を選定へ反映する。
+2. Pexels連携の強化
+   - render中の自動取得をオプション化する。
+   - Pexels APIのレート制限、0件時fallback、download失敗時の再試行を強化する。
+   - Pexelsクレジットを `credits.txt` / `description.txt` により明示的に出す。
 
 3. render結果のDB正規化拡張
    - `render_narration_files`, `render_audio_outputs`, `render_subtitle_items`, `render_ffmpeg_logs`, `render_credits` などへ保存する。
@@ -233,7 +234,7 @@ Docker周りは現状実装を正とします。
 
 次の1手としては、Pexelsより先にAivisSpeech話者管理を入れるのが安全です。理由は、Docker上のAivisSpeech Engineが起動していても、projectのspeaker指定が現実のモデルと一致しないと実音声renderが失敗するためです。
 
-その次にPexels連携を実装します。ローカル映像素材のDB登録・選定・FFmpeg背景化はすでにあるため、Pexelsは `media_assets` へ素材を投入する取得経路として追加するのが自然です。
+その次にPexels連携を強化します。最小実装として `fetch-pexels` は入ったため、次はPexelsクレジット出力、0件時fallback、render中の任意自動取得を足すのが自然です。
 
 ## よく使う確認コマンド
 
@@ -241,6 +242,8 @@ Docker周りは現状実装を正とします。
 .\.venv\Scripts\python.exe -m ruff check .
 .\.venv\Scripts\python.exe -m ruff format . --check
 .\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe -m src.main check-pexels "deep ocean" --per-page 1
+.\.venv\Scripts\python.exe -m src.main fetch-pexels projects\trivia_submarine_black_001\project.youtube.json --per-query 1 --max-downloads 1
 docker compose --profile aivis config
 docker compose --profile aivis up -d aivis-engine
 Invoke-WebRequest -UseBasicParsing http://127.0.0.1:10101/version
