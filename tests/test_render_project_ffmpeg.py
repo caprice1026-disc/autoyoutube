@@ -5,6 +5,7 @@ import wave
 from pathlib import Path
 from typing import Any
 
+from src.bgm.library import BgmTrack
 from src.pipeline.render_project import render_project
 import src.pipeline.render_project as render_module
 
@@ -28,8 +29,9 @@ class FakeVideoRenderer:
         duration_sec: float,
         target: dict[str, Any],
         logs_dir: Path,
+        bgm: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        self.calls.append({"render_dir": render_dir, "duration_sec": duration_sec, "target": target, "logs_dir": logs_dir})
+        self.calls.append({"render_dir": render_dir, "duration_sec": duration_sec, "target": target, "logs_dir": logs_dir, "bgm": bgm})
         (render_dir / "output.mp4").write_bytes(b"fake mp4")
         (logs_dir / "ffmpeg_command.txt").write_text("ffmpeg fake\n", encoding="utf-8")
         (logs_dir / "ffmpeg_stderr.log").write_text("", encoding="utf-8")
@@ -86,6 +88,7 @@ def test_render_project_uses_video_renderer_and_marks_video_success(tmp_path: Pa
     monkeypatch.setattr(render_module, "RENDERS_DIR", tmp_path / "renders")
     monkeypatch.setattr(render_module, "init_db", lambda: None)
     monkeypatch.setattr(render_module, "connect", lambda: NullConnection())
+    monkeypatch.setattr(render_module, "list_active_bgm_tracks", lambda connection: [])
     monkeypatch.setattr(render_module, "upsert_project", lambda *args: None)
     monkeypatch.setattr(render_module, "insert_render_summary", lambda *args: None)
     renderer = FakeVideoRenderer()
@@ -98,3 +101,50 @@ def test_render_project_uses_video_renderer_and_marks_video_success(tmp_path: Pa
     assert rendered["status"] == "success"
     assert rendered["ffmpeg"]["version"] == "ffmpeg test"
     assert rendered["validation"]["warnings"] == [{"code": "DRY_RUN_VOICE", "message": "Silent placeholder WAV files were generated from estimated durations."}]
+
+
+def test_render_project_selects_bgm_and_passes_it_to_video_renderer(tmp_path: Path, monkeypatch) -> None:
+    project = _project()
+    project["bgm"]["strategy"] = "local_safe_bgm"
+    project["bgm"]["allow_sources"] = ["local_original"]
+    project_path = tmp_path / "project.youtube.json"
+    project_path.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+    bgm_path = tmp_path / "mystery.wav"
+    bgm_path.write_bytes(b"fake wav")
+    track = BgmTrack(
+        track_id="mystery_low",
+        file_path=bgm_path,
+        title="Mystery Low",
+        artist="Local",
+        source="local_original",
+        license_type="local_safe",
+        attribution_required=True,
+        attribution_text="BGM: Mystery Low by Local",
+        mood="mysterious",
+        intensity="low",
+        duration_sec=20,
+        bpm=90,
+        loopable=True,
+        allowed_platforms=["youtube_shorts"],
+        used_count=0,
+        is_active=True,
+    )
+    monkeypatch.setattr(render_module, "RENDERS_DIR", tmp_path / "renders")
+    monkeypatch.setattr(render_module, "init_db", lambda: None)
+    monkeypatch.setattr(render_module, "connect", lambda: NullConnection())
+    monkeypatch.setattr(render_module, "list_active_bgm_tracks", lambda connection: [track])
+    monkeypatch.setattr(render_module, "upsert_project", lambda *args: None)
+    monkeypatch.setattr(render_module, "insert_render_summary", lambda *args: None)
+    renderer = FakeVideoRenderer()
+
+    rendered_path = render_project(project_path, video_renderer=renderer)
+
+    rendered = json.loads(rendered_path.read_text(encoding="utf-8"))
+    assert renderer.calls[0]["bgm"]["track_id"] == "mystery_low"
+    assert renderer.calls[0]["bgm"]["file_path"] == str(bgm_path)
+    assert renderer.calls[0]["bgm"]["volume_db"] == -26
+    assert rendered["bgm"]["enabled"] is True
+    assert rendered["bgm"]["track_id"] == "mystery_low"
+    assert rendered["bgm"]["looped"] is False
+    assert rendered["credits"]["required"] is True
+    assert rendered["credits"]["items"] == [{"credit_type": "bgm", "source": "local_original", "text": "BGM: Mystery Low by Local", "url": None}]

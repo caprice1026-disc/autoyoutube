@@ -7,9 +7,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
+from src.bgm.library import BgmTrack
+from src.bgm.selector import select_bgm_track
 from src.config import PROJECT_SCHEMA_PATH, RENDERED_SCHEMA_PATH, RENDERS_DIR
 from src.db.database import connect, init_db
-from src.db.repositories import insert_render_summary, upsert_project
+from src.db.repositories import insert_render_summary, list_active_bgm_tracks, upsert_project
+from src.errors import AppError
 from src.utils.file_hash import sha256_file
 from src.validators.json_validator import load_json, validate_json
 from src.voice.audio_merge import merge_wav_files
@@ -37,6 +40,7 @@ class VideoRenderer(Protocol):
         duration_sec: float,
         target: dict[str, Any],
         logs_dir: Path,
+        bgm: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         ...
 
@@ -49,7 +53,12 @@ def render_project(project_path: Path, voice_service: VoiceService | None = None
     project_errors = validate_json(project, project_schema)
     if project_errors:
         joined = "\n".join(error.to_text() for error in project_errors)
-        raise ValueError(f"project JSON validation failed:\n{joined}")
+        raise AppError(
+            "project JSON validation failed.",
+            location=str(project_path),
+            details=joined,
+            next_step="Fix project JSON schema errors and run validation again.",
+        )
 
     project_hash = sha256_file(project_path)
     render_dir = RENDERS_DIR / project["id"]
@@ -63,16 +72,18 @@ def render_project(project_path: Path, voice_service: VoiceService | None = None
         render_dir,
         voice_service,
     )
+    selected_bgm = _select_render_bgm(project["bgm"])
+    bgm_render = _build_bgm_render(project["bgm"], selected_bgm, actual_duration)
 
     now = datetime.now(timezone.utc)
     render_id = f"render_{now.strftime('%Y%m%d_%H%M%S')}"
     description = _build_description(project)
-    credits = "Dry-run render: external visual media and BGM were not used.\n"
+    credits_required, credits_items, credits = _build_credits(selected_bgm)
     subtitle = _build_subtitle(subtitle_items)
     (render_dir / "description.txt").write_text(description, encoding="utf-8")
     (render_dir / "credits.txt").write_text(credits, encoding="utf-8")
     (render_dir / "subtitle.ass").write_text(subtitle, encoding="utf-8")
-    video_result = _render_video(video_renderer, render_dir, actual_duration, project["target"], logs_dir)
+    video_result = _render_video(video_renderer, render_dir, actual_duration, project["target"], logs_dir, bgm_render)
 
     rendered_path = render_dir / "rendered.youtube.json"
     rendered = _build_rendered(
@@ -85,6 +96,9 @@ def render_project(project_path: Path, voice_service: VoiceService | None = None
         logs_dir,
         description,
         credits,
+        credits_required,
+        credits_items,
+        bgm_render,
         narration_files,
         subtitle_items,
         visuals,
@@ -200,6 +214,9 @@ def _build_rendered(
     logs_dir: Path,
     description: str,
     credits: str,
+    credits_required: bool,
+    credits_items: list[dict[str, Any]],
+    bgm_render: dict[str, Any] | None,
     narration_files: list[dict[str, Any]],
     subtitle_items: list[dict[str, Any]],
     visuals: list[dict[str, Any]],
@@ -254,7 +271,9 @@ def _build_rendered(
             "final_audio_duration_sec": actual_duration,
             "loudness_normalization": {"enabled": False},
         },
-        "bgm": {"enabled": False, "strategy": "none", "source": "none", "mood": "none", "intensity": "none"},
+        "bgm": bgm_render
+        if bgm_render is not None
+        else {"enabled": False, "strategy": "none", "source": "none", "mood": "none", "intensity": "none"},
         "visuals": visuals,
         "subtitles": {
             "format": "ass",
@@ -277,7 +296,7 @@ def _build_rendered(
             "upload": {"planned": False, "status": "not_uploaded"},
         },
         "thumbnail": {"generated": False},
-        "credits": {"required": False, "items": [], "description_text": credits},
+        "credits": {"required": credits_required, "items": credits_items, "description_text": credits},
         "ffmpeg": {
             "version": video_result["version"],
             "command_log_path": _rel(Path(video_result["command_log_path"])),
@@ -311,6 +330,7 @@ def _render_video(
     actual_duration: float,
     target: dict[str, Any],
     logs_dir: Path,
+    bgm_render: dict[str, Any] | None,
 ) -> dict[str, Any]:
     if video_renderer is None:
         command_log_path = logs_dir / "ffmpeg_command.txt"
@@ -323,7 +343,50 @@ def _render_video(
             "command_log_path": str(command_log_path),
             "stderr_log_path": str(stderr_log_path),
         }
-    return video_renderer.render(render_dir=render_dir, duration_sec=actual_duration, target=target, logs_dir=logs_dir)
+    return video_renderer.render(render_dir=render_dir, duration_sec=actual_duration, target=target, logs_dir=logs_dir, bgm=bgm_render)
+
+
+def _select_render_bgm(project_bgm: dict[str, Any]) -> BgmTrack | None:
+    if not project_bgm.get("enabled") or project_bgm.get("strategy") == "none":
+        return None
+    with connect() as connection:
+        tracks = list_active_bgm_tracks(connection)
+    if not tracks:
+        return None
+    return select_bgm_track(project_bgm, tracks)
+
+
+def _build_bgm_render(project_bgm: dict[str, Any], track: BgmTrack | None, actual_duration: float) -> dict[str, Any] | None:
+    if track is None:
+        return None
+    return {
+        "enabled": True,
+        "strategy": project_bgm["strategy"],
+        "track_id": track.track_id,
+        "file_path": str(track.file_path),
+        "title": track.title,
+        "artist": track.artist,
+        "source": track.source,
+        "license_type": track.license_type,
+        "attribution_required": track.attribution_required,
+        "attribution_text": track.attribution_text,
+        "mood": track.mood,
+        "intensity": track.intensity,
+        "volume_db": project_bgm["volume_db"],
+        "fade_in_ms": project_bgm["fade_in_ms"],
+        "fade_out_ms": project_bgm["fade_out_ms"],
+        "looped": bool(track.loopable and track.duration_sec is not None and track.duration_sec < actual_duration),
+        "used_start_sec": 0,
+        "used_duration_sec": actual_duration,
+    }
+
+
+def _build_credits(track: BgmTrack | None) -> tuple[bool, list[dict[str, Any]], str]:
+    if track is None:
+        return False, [], "Dry-run render: external visual media and BGM were not used.\n"
+    text = track.attribution_text or f"BGM: {track.title} by {track.artist}".strip()
+    item = {"credit_type": "bgm", "source": track.source, "text": text, "url": None}
+    return track.attribution_required, [item], text + "\n"
 
 
 def _build_subtitle(subtitle_items: list[dict[str, Any]]) -> str:

@@ -8,6 +8,8 @@ from typing import Any
 from jsonschema import Draft202012Validator, FormatChecker
 from jsonschema.exceptions import ValidationError
 
+from src.errors import AppError
+
 
 @dataclass(frozen=True)
 class ValidationMessage:
@@ -22,10 +24,29 @@ class ValidationMessage:
 
 
 def load_json(path: Path) -> dict[str, Any]:
-    with path.open("r", encoding="utf-8") as file:
-        data = json.load(file)
+    try:
+        with path.open("r", encoding="utf-8") as file:
+            data = json.load(file)
+    except FileNotFoundError as exc:
+        raise AppError(
+            "JSON file was not found.",
+            location=str(path),
+            next_step="Check the path and run the command again.",
+        ) from exc
+    except json.JSONDecodeError as exc:
+        raise AppError(
+            "JSON file could not be parsed.",
+            location=str(path),
+            details=f"line {exc.lineno}, column {exc.colno}: {exc.msg}",
+            next_step="Fix the JSON syntax and run validation again.",
+        ) from exc
     if not isinstance(data, dict):
-        raise ValueError(f"JSONのルートはobjectである必要があります: {path}")
+        raise AppError(
+            "JSON root must be an object.",
+            location=str(path),
+            details=f"actual type: {type(data).__name__}",
+            next_step="Wrap the JSON content in an object with named fields.",
+        )
     return data
 
 

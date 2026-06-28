@@ -4,6 +4,8 @@ import json
 import sqlite3
 from typing import Any
 
+from src.bgm.library import BgmTrack
+
 
 def upsert_project(connection: sqlite3.Connection, project: dict[str, Any], project_path: str, project_hash: str) -> None:
     target = project["target"]
@@ -63,3 +65,132 @@ def insert_render_summary(connection: sqlite3.Connection, rendered: dict[str, An
     )
     mr = rendered["manual_review"]
     connection.execute("INSERT INTO render_manual_reviews (render_id, required, fact_check_required, checked, publish_ready, notes) VALUES (?, ?, ?, ?, ?, ?)", (rendered["render_id"], int(mr["required"]), int(mr["fact_check_required"]), int(mr["checked"]), int(mr["publish_ready"]), mr["notes"]))
+    bgm = rendered["bgm"]
+    connection.execute(
+        """
+        INSERT INTO render_bgm_usage (
+            render_id, enabled, strategy, track_id, file_path, title, artist,
+            source, license_type, attribution_required, attribution_text,
+            mood, intensity, volume_db, fade_in_ms, fade_out_ms,
+            looped, used_start_sec, used_duration_sec
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            rendered["render_id"],
+            int(bool(bgm.get("enabled"))),
+            bgm.get("strategy"),
+            bgm.get("track_id"),
+            bgm.get("file_path"),
+            bgm.get("title"),
+            bgm.get("artist"),
+            bgm.get("source"),
+            bgm.get("license_type"),
+            _optional_bool_int(bgm.get("attribution_required")),
+            bgm.get("attribution_text"),
+            bgm.get("mood"),
+            bgm.get("intensity"),
+            bgm.get("volume_db"),
+            bgm.get("fade_in_ms"),
+            bgm.get("fade_out_ms"),
+            _optional_bool_int(bgm.get("looped")),
+            bgm.get("used_start_sec"),
+            bgm.get("used_duration_sec"),
+        ),
+    )
+    if bgm.get("track_id"):
+        connection.execute(
+            "UPDATE bgm_tracks SET used_count = used_count + 1, last_used_at = ? WHERE track_id = ?",
+            (rendered["completed_at"], bgm["track_id"]),
+        )
+
+
+def upsert_bgm_tracks(connection: sqlite3.Connection, tracks: list[BgmTrack]) -> None:
+    for track in tracks:
+        connection.execute(
+            """
+            INSERT INTO bgm_tracks (
+                track_id, file_path, title, artist, source, license_type,
+                attribution_required, attribution_text, mood, intensity,
+                duration_sec, bpm, loopable, allowed_platforms_json,
+                used_count, is_active
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(track_id) DO UPDATE SET
+                file_path = excluded.file_path,
+                title = excluded.title,
+                artist = excluded.artist,
+                source = excluded.source,
+                license_type = excluded.license_type,
+                attribution_required = excluded.attribution_required,
+                attribution_text = excluded.attribution_text,
+                mood = excluded.mood,
+                intensity = excluded.intensity,
+                duration_sec = excluded.duration_sec,
+                bpm = excluded.bpm,
+                loopable = excluded.loopable,
+                allowed_platforms_json = excluded.allowed_platforms_json,
+                is_active = excluded.is_active
+            """,
+            (
+                track.track_id,
+                str(track.file_path),
+                track.title,
+                track.artist,
+                track.source,
+                track.license_type,
+                int(track.attribution_required),
+                track.attribution_text,
+                track.mood,
+                track.intensity,
+                track.duration_sec,
+                track.bpm,
+                int(track.loopable),
+                json.dumps(track.allowed_platforms, ensure_ascii=False),
+                track.used_count,
+                int(track.is_active),
+            ),
+        )
+
+
+def list_active_bgm_tracks(connection: sqlite3.Connection) -> list[BgmTrack]:
+    rows = connection.execute(
+        """
+        SELECT
+            track_id, file_path, title, artist, source, license_type,
+            attribution_required, attribution_text, mood, intensity,
+            duration_sec, bpm, loopable, allowed_platforms_json,
+            used_count, is_active
+        FROM bgm_tracks
+        WHERE is_active = 1
+        ORDER BY used_count ASC, track_id ASC
+        """
+    ).fetchall()
+    return [_bgm_track_from_row(row) for row in rows]
+
+
+def _bgm_track_from_row(row: sqlite3.Row) -> BgmTrack:
+    from pathlib import Path
+
+    return BgmTrack(
+        track_id=row["track_id"],
+        file_path=Path(row["file_path"]),
+        title=row["title"] or "",
+        artist=row["artist"] or "",
+        source=row["source"],
+        license_type=row["license_type"] or "",
+        attribution_required=bool(row["attribution_required"]),
+        attribution_text=row["attribution_text"] or "",
+        mood=row["mood"] or "none",
+        intensity=row["intensity"] or "none",
+        duration_sec=row["duration_sec"],
+        bpm=row["bpm"],
+        loopable=bool(row["loopable"]),
+        allowed_platforms=json.loads(row["allowed_platforms_json"]),
+        used_count=int(row["used_count"]),
+        is_active=bool(row["is_active"]),
+    )
+
+
+def _optional_bool_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    return int(bool(value))

@@ -6,6 +6,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from src.errors import AppError
+
 
 @dataclass(frozen=True)
 class FfmpegRenderRequest:
@@ -21,10 +23,14 @@ class FfmpegRenderRequest:
     video_codec: str
     audio_codec: str
     pix_fmt: str
+    bgm_path: Path | None = None
+    bgm_volume_db: float = -26
+    bgm_fade_in_sec: float = 0.5
+    bgm_fade_out_sec: float = 1.2
 
 
 def build_ffmpeg_command(request: FfmpegRenderRequest, ffmpeg_path: Path) -> list[str]:
-    return [
+    command = [
         str(ffmpeg_path),
         "-y",
         "-f",
@@ -33,25 +39,29 @@ def build_ffmpeg_command(request: FfmpegRenderRequest, ffmpeg_path: Path) -> lis
         f"color=c=0x07111f:s={request.width}x{request.height}:r={request.fps}:d={request.duration_sec:.3f}",
         "-i",
         _relative_arg(request.audio_path, request.render_dir),
-        "-vf",
-        f"subtitles={_relative_arg(request.subtitle_path, request.render_dir)}",
-        "-shortest",
-        "-c:v",
-        request.video_codec,
-        "-pix_fmt",
-        request.pix_fmt,
-        "-r",
-        str(request.fps),
-        "-c:a",
-        request.audio_codec,
-        _relative_arg(request.output_path, request.render_dir),
     ]
+    if request.bgm_path is not None:
+        command.extend(["-stream_loop", "-1", "-i", _relative_arg(request.bgm_path, request.render_dir)])
+    command.extend(["-vf", f"subtitles={_relative_arg(request.subtitle_path, request.render_dir)}"])
+    if request.bgm_path is not None:
+        command.extend(["-filter_complex", _bgm_filter(request), "-shortest", "-c:v", request.video_codec, "-pix_fmt", request.pix_fmt, "-r", str(request.fps), "-c:a", request.audio_codec, "-map", "0:v", "-map", "[aout]"])
+    else:
+        command.extend(["-shortest", "-c:v", request.video_codec, "-pix_fmt", request.pix_fmt, "-r", str(request.fps), "-c:a", request.audio_codec])
+    command.append(_relative_arg(request.output_path, request.render_dir))
+    return command
 
 
 def find_ffmpeg_executable(explicit_path: str | Path | None = None) -> Path:
     candidates: list[Path] = []
     if explicit_path:
-        candidates.append(Path(explicit_path))
+        candidate = Path(explicit_path)
+        if candidate.is_file():
+            return candidate
+        raise AppError(
+            "FFmpeg executable was not found.",
+            location=str(candidate),
+            next_step="Install FFmpeg or pass --ffmpeg-path with the full path to ffmpeg.exe.",
+        )
     env_path = os.environ.get("FFMPEG_PATH")
     if env_path:
         candidates.append(Path(env_path))
@@ -63,7 +73,11 @@ def find_ffmpeg_executable(explicit_path: str | Path | None = None) -> Path:
     for candidate in candidates:
         if candidate.is_file():
             return candidate
-    raise FileNotFoundError("ffmpeg executable was not found. Pass --ffmpeg-path or set FFMPEG_PATH.")
+    raise AppError(
+        "FFmpeg executable was not found.",
+        location="ffmpeg",
+        next_step="Install FFmpeg or pass --ffmpeg-path with the full path to ffmpeg.exe.",
+    )
 
 
 class FfmpegVideoRenderer:
@@ -77,6 +91,7 @@ class FfmpegVideoRenderer:
         duration_sec: float,
         target: dict,
         logs_dir: Path,
+        bgm: dict | None = None,
     ) -> dict[str, str | bool]:
         video_format = target["video_format"]
         resolution = target["resolution"]
@@ -93,6 +108,10 @@ class FfmpegVideoRenderer:
             video_codec=video_format["video_codec"],
             audio_codec=video_format["audio_codec"],
             pix_fmt=video_format["pix_fmt"],
+            bgm_path=Path(bgm["file_path"]) if bgm else None,
+            bgm_volume_db=float(bgm["volume_db"]) if bgm else -26,
+            bgm_fade_in_sec=float(bgm["fade_in_ms"]) / 1000 if bgm else 0.5,
+            bgm_fade_out_sec=float(bgm["fade_out_ms"]) / 1000 if bgm else 1.2,
         )
         logs_dir.mkdir(parents=True, exist_ok=True)
         command = build_ffmpeg_command(request, self.ffmpeg_path)
@@ -104,7 +123,12 @@ class FfmpegVideoRenderer:
         stderr_log_path.write_text(result.stderr, encoding="utf-8")
         if result.returncode != 0:
             tail = result.stderr[-2000:]
-            raise RuntimeError(f"FFmpeg failed with exit code {result.returncode}: {tail}")
+            raise AppError(
+                "FFmpeg render failed.",
+                location=str(stderr_log_path),
+                details=f"exit code {result.returncode}: {tail}",
+                next_step="Open the stderr log, fix the input paths or FFmpeg options, and run render again.",
+            )
 
         return {
             "rendered": True,
@@ -118,7 +142,19 @@ def _relative_arg(path: Path, root: Path) -> str:
     try:
         return path.resolve().relative_to(root.resolve()).as_posix()
     except ValueError:
-        return path.as_posix()
+        return path.resolve().as_posix()
+
+
+def _bgm_filter(request: FfmpegRenderRequest) -> str:
+    volume = 10 ** (request.bgm_volume_db / 20)
+    fade_out_start = max(0.0, request.duration_sec - request.bgm_fade_out_sec)
+    return (
+        f"[1:a]volume=1.0[narr];"
+        f"[2:a]volume={volume:.6f},"
+        f"afade=t=in:st=0:d={request.bgm_fade_in_sec:.3f},"
+        f"afade=t=out:st={fade_out_start:.3f}:d={request.bgm_fade_out_sec:.3f}[bgm];"
+        "[narr][bgm]amix=inputs=2:duration=first:dropout_transition=0[aout]"
+    )
 
 
 def _winget_ffmpeg_candidates() -> list[Path]:

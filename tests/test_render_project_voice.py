@@ -123,6 +123,7 @@ def test_render_project_uses_actual_voice_durations_for_audio_and_subtitles(tmp_
     monkeypatch.setattr(render_module, "RENDERS_DIR", tmp_path / "renders")
     monkeypatch.setattr(render_module, "init_db", lambda: None)
     monkeypatch.setattr(render_module, "connect", lambda: NullConnection())
+    monkeypatch.setattr(render_module, "list_active_bgm_tracks", lambda connection: [])
     monkeypatch.setattr(render_module, "upsert_project", lambda *args: None)
     monkeypatch.setattr(render_module, "insert_render_summary", lambda *args: None)
     voice_service = FakeVoiceService([1.0, 1.5, 2.0])
