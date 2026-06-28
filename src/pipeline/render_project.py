@@ -1,0 +1,109 @@
+from __future__ import annotations
+
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+from src.config import PROJECT_SCHEMA_PATH, RENDERED_SCHEMA_PATH, RENDERS_DIR
+from src.db.database import connect, init_db
+from src.db.repositories import insert_render_summary, upsert_project
+from src.utils.file_hash import sha256_file
+from src.validators.json_validator import load_json, validate_json
+
+
+def render_project(project_path: Path) -> Path:
+    init_db()
+    project_path = project_path.resolve()
+    project = load_json(project_path)
+    project_schema = load_json(PROJECT_SCHEMA_PATH)
+    project_errors = validate_json(project, project_schema)
+    if project_errors:
+        joined = "\n".join(error.to_text() for error in project_errors)
+        raise ValueError(f"project JSONの検証に失敗しました。\n{joined}")
+
+    project_hash = sha256_file(project_path)
+    render_dir = RENDERS_DIR / project["id"]
+    (render_dir / "audio").mkdir(parents=True, exist_ok=True)
+    (render_dir / "video").mkdir(parents=True, exist_ok=True)
+    logs_dir = render_dir / "logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+
+    now = datetime.now(timezone.utc)
+    render_id = f"render_{now.strftime('%Y%m%d_%H%M%S')}"
+    description = _build_description(project)
+    credits = "仮レンダーのため、外部素材とBGMは未使用です。\n"
+    subtitle = _build_subtitle(project)
+    (render_dir / "description.txt").write_text(description, encoding="utf-8")
+    (render_dir / "credits.txt").write_text(credits, encoding="utf-8")
+    (render_dir / "subtitle.ass").write_text(subtitle, encoding="utf-8")
+    (logs_dir / "ffmpeg_command.txt").write_text("仮レンダーのためFFmpegは未実行です。\n", encoding="utf-8")
+    (logs_dir / "ffmpeg_stderr.log").write_text("", encoding="utf-8")
+
+    rendered_path = render_dir / "rendered.youtube.json"
+    rendered = _build_rendered(project, project_path, project_hash, render_id, now, render_dir, logs_dir, description, credits)
+    rendered_schema = load_json(RENDERED_SCHEMA_PATH)
+    render_errors = validate_json(rendered, rendered_schema)
+    rendered["validation"]["rendered_json_valid"] = not render_errors
+    rendered["validation"]["errors"] = [
+        {"code": "RENDER_SCHEMA_ERROR", "message": error.to_text(), "details": {"path": error.path}} for error in render_errors
+    ]
+    rendered_path.write_text(json.dumps(rendered, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    with connect() as connection:
+        upsert_project(connection, project, _rel(project_path), project_hash)
+        insert_render_summary(connection, rendered)
+    return rendered_path
+
+
+def _build_rendered(project: dict[str, Any], project_path: Path, project_hash: str, render_id: str, now: datetime, render_dir: Path, logs_dir: Path, description: str, credits: str) -> dict[str, Any]:
+    script = project["script"]
+    gap = project["voice"]["sentence_gap_ms"] / 1000
+    cursor = 0.0
+    narration_files = []
+    subtitle_items = []
+    visuals = []
+    for item in script:
+        duration = float(item["estimated_duration_sec"])
+        start = round(cursor, 3)
+        end = round(cursor + duration, 3)
+        narration_files.append({"index": item["index"], "text": item["text"], "path": _rel(render_dir / "audio" / f"{item['index']:03d}.wav"), "estimated_duration_sec": duration, "actual_duration_sec": duration, "start_sec": start, "end_sec": end})
+        subtitle_items.append({"index": item["index"], "text": item["text"], "start_sec": start, "end_sec": end, "caption_style_hint": item["caption_style_hint"]})
+        visuals.append({"index": item["index"], "script_index": item["index"], "visual_query": item["visual_query"], "source": "local", "local_file_path": _rel(render_dir / "video" / f"material_{item['index']:03d}.mp4"), "original_width": 1080, "original_height": 1920, "original_duration_sec": duration, "orientation": "portrait", "selected_quality": "unknown", "transform": {"type": "none", "scale_width": 1080, "scale_height": 1920}, "used_start_sec": 0, "used_duration_sec": duration, "video_start_sec": start, "video_end_sec": end})
+        cursor = end + gap
+    actual_duration = round(max(1.0, cursor - gap), 3)
+    iso = now.isoformat().replace("+00:00", "Z")
+    return {"schema_version":"rendered-youtube-1.0.0","platform_profile":"youtube_shorts","project_id":project["id"],"render_id":render_id,"status":"partial_success","created_at":iso,"completed_at":iso,"input":{"project_json_path":_rel(project_path),"project_json_hash":project_hash,"project_schema_path":_rel(PROJECT_SCHEMA_PATH)},"output":{"video_path":_rel(render_dir/"output.mp4"),"thumbnail_path":_rel(render_dir/"thumbnail.jpg"),"subtitle_ass_path":_rel(render_dir/"subtitle.ass"),"description_path":_rel(render_dir/"description.txt"),"credits_path":_rel(render_dir/"credits.txt"),"rendered_json_path":_rel(render_dir/"rendered.youtube.json"),"logs_dir":_rel(logs_dir)},"target":{"planned_duration_sec":project["target"]["duration_sec"],"actual_duration_sec":actual_duration,"aspect_ratio":"9:16","resolution":project["target"]["resolution"],"fps":project["target"]["fps"],"video_format":project["target"]["video_format"]},"voice":{**project["voice"],"sample_rate":44100,"audio_format":"wav"},"audio":{"narration_files":narration_files,"merged_narration_path":_rel(render_dir/"audio"/"narration.wav"),"merged_narration_duration_sec":actual_duration,"final_audio_path":_rel(render_dir/"audio"/"final_audio.wav"),"final_audio_duration_sec":actual_duration,"loudness_normalization":{"enabled":False}},"bgm":{"enabled":False,"strategy":"none","source":"none","mood":"none","intensity":"none"},"visuals":visuals,"subtitles":{"format":"ass","style":{"font_name":"Noto Sans CJK JP","font_size":72,"primary_color":"FFFFFF","outline_color":"000000","outline":5,"shadow":1,"alignment":"bottom_center","margin_v":220},"items":subtitle_items},"youtube":{**project["youtube"],"description":description,"description_path":_rel(render_dir/"description.txt"),"upload":{"planned":False,"status":"not_uploaded"}},"thumbnail":{"generated":False},"credits":{"required":False,"items":[],"description_text":credits},"ffmpeg":{"version":"not_executed","command_log_path":_rel(logs_dir/"ffmpeg_command.txt"),"stderr_log_path":_rel(logs_dir/"ffmpeg_stderr.log"),"video_codec":project["target"]["video_format"]["video_codec"],"audio_codec":"aac","pix_fmt":"yuv420p","preset":"medium","crf":20},"validation":{"project_json_valid":True,"rendered_json_valid":True,"warnings":[{"code":"DRY_RUN_RENDER","message":"外部APIとFFmpegを使わない仮レンダーです。"}],"errors":[]},"manual_review":{"required":True,"fact_check_required":project["manual_fact_check_required"],"checked":False,"publish_ready":False,"notes":"生成後に手動ファクトチェックと品質確認が必要です。"}}
+
+
+def _build_description(project: dict[str, Any]) -> str:
+    yt = project["youtube"]
+    sections = yt["description_sections"]
+    return "\n".join([yt["description"], "", sections["summary"], "", " ".join(yt["hashtags"]), "", sections["disclaimer"]]).strip() + "\n"
+
+
+def _build_subtitle(project: dict[str, Any]) -> str:
+    lines = ["[Script Info]", "ScriptType: v4.00+", "PlayResX: 1080", "PlayResY: 1920", "", "[V4+ Styles]", "Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding", "Style: Default,Noto Sans CJK JP,72,&H00FFFFFF,&H00000000,1,5,1,2,80,80,220,1", "", "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"]
+    cursor = 0.0
+    gap = project["voice"]["sentence_gap_ms"] / 1000
+    for item in project["script"]:
+        start = _ass_time(cursor)
+        end_sec = cursor + float(item["estimated_duration_sec"])
+        lines.append(f"Dialogue: 0,{start},{_ass_time(end_sec)},Default,,0,0,0,,{item['text']}")
+        cursor = end_sec + gap
+    return "\n".join(lines) + "\n"
+
+
+def _ass_time(seconds: float) -> str:
+    centis = int(round(seconds * 100))
+    s, cs = divmod(centis, 100)
+    m, s = divmod(s, 60)
+    h, m = divmod(m, 60)
+    return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
+
+
+def _rel(path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(Path.cwd().resolve()))
+    except ValueError:
+        return str(path)
