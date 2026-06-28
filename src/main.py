@@ -6,6 +6,7 @@ from pathlib import Path
 from src.config import PROJECT_SCHEMA_PATH, RENDERED_SCHEMA_PATH
 from src.db.database import init_db
 from src.pipeline.render_project import render_project
+from src.render.ffmpeg_renderer import FfmpegVideoRenderer
 from src.validators.json_validator import validate_json_file
 from src.voice.aivis_client import AivisSpeechClient
 
@@ -21,6 +22,8 @@ def main() -> int:
     rr = sub.add_parser("render", help="render project assets")
     rr.add_argument("path")
     rr.add_argument("--voice-mode", choices=["dry-run", "aivis"], default="dry-run")
+    rr.add_argument("--video-mode", choices=["dry-run", "ffmpeg"], default="dry-run")
+    rr.add_argument("--ffmpeg-path")
     args = parser.parse_args()
 
     if args.command == "init-db":
@@ -33,7 +36,8 @@ def main() -> int:
         return _validate(Path(args.path), RENDERED_SCHEMA_PATH, "rendered JSON")
     if args.command == "render":
         voice_service = AivisSpeechClient() if args.voice_mode == "aivis" else None
-        output = render_project(Path(args.path), voice_service=voice_service)
+        video_renderer = FfmpegVideoRenderer(args.ffmpeg_path) if args.video_mode == "ffmpeg" else None
+        output = render_project(Path(args.path), voice_service=voice_service, video_renderer=video_renderer)
         print(f"Render complete: {output}")
         return 0
     return 1

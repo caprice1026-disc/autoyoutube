@@ -29,7 +29,19 @@ class VoiceService(Protocol):
         ...
 
 
-def render_project(project_path: Path, voice_service: VoiceService | None = None) -> Path:
+class VideoRenderer(Protocol):
+    def render(
+        self,
+        *,
+        render_dir: Path,
+        duration_sec: float,
+        target: dict[str, Any],
+        logs_dir: Path,
+    ) -> dict[str, Any]:
+        ...
+
+
+def render_project(project_path: Path, voice_service: VoiceService | None = None, video_renderer: VideoRenderer | None = None) -> Path:
     init_db()
     project_path = project_path.resolve()
     project = load_json(project_path)
@@ -60,8 +72,7 @@ def render_project(project_path: Path, voice_service: VoiceService | None = None
     (render_dir / "description.txt").write_text(description, encoding="utf-8")
     (render_dir / "credits.txt").write_text(credits, encoding="utf-8")
     (render_dir / "subtitle.ass").write_text(subtitle, encoding="utf-8")
-    (logs_dir / "ffmpeg_command.txt").write_text("FFmpeg was not executed for this render.\n", encoding="utf-8")
-    (logs_dir / "ffmpeg_stderr.log").write_text("", encoding="utf-8")
+    video_result = _render_video(video_renderer, render_dir, actual_duration, project["target"], logs_dir)
 
     rendered_path = render_dir / "rendered.youtube.json"
     rendered = _build_rendered(
@@ -80,6 +91,7 @@ def render_project(project_path: Path, voice_service: VoiceService | None = None
         actual_duration,
         sample_rate,
         voice_service is None,
+        video_result,
     )
     rendered_schema = load_json(RENDERED_SCHEMA_PATH)
     render_errors = validate_json(rendered, rendered_schema)
@@ -194,9 +206,12 @@ def _build_rendered(
     actual_duration: float,
     sample_rate: int,
     dry_run_voice: bool,
+    video_result: dict[str, Any],
 ) -> dict[str, Any]:
     iso = now.isoformat().replace("+00:00", "Z")
-    warnings = [{"code": "VIDEO_NOT_RENDERED", "message": "FFmpeg was not executed for this render."}]
+    warnings = []
+    if not video_result["rendered"]:
+        warnings.append({"code": "VIDEO_NOT_RENDERED", "message": "FFmpeg was not executed for this render."})
     if dry_run_voice:
         warnings.append({"code": "DRY_RUN_VOICE", "message": "Silent placeholder WAV files were generated from estimated durations."})
 
@@ -205,7 +220,7 @@ def _build_rendered(
         "platform_profile": "youtube_shorts",
         "project_id": project["id"],
         "render_id": render_id,
-        "status": "partial_success",
+        "status": "success" if video_result["rendered"] else "partial_success",
         "created_at": iso,
         "completed_at": iso,
         "input": {
@@ -264,9 +279,9 @@ def _build_rendered(
         "thumbnail": {"generated": False},
         "credits": {"required": False, "items": [], "description_text": credits},
         "ffmpeg": {
-            "version": "not_executed",
-            "command_log_path": _rel(logs_dir / "ffmpeg_command.txt"),
-            "stderr_log_path": _rel(logs_dir / "ffmpeg_stderr.log"),
+            "version": video_result["version"],
+            "command_log_path": _rel(Path(video_result["command_log_path"])),
+            "stderr_log_path": _rel(Path(video_result["stderr_log_path"])),
             "video_codec": project["target"]["video_format"]["video_codec"],
             "audio_codec": "aac",
             "pix_fmt": "yuv420p",
@@ -288,6 +303,27 @@ def _build_description(project: dict[str, Any]) -> str:
     yt = project["youtube"]
     sections = yt["description_sections"]
     return "\n".join([yt["description"], "", sections["summary"], "", " ".join(yt["hashtags"]), "", sections["disclaimer"]]).strip() + "\n"
+
+
+def _render_video(
+    video_renderer: VideoRenderer | None,
+    render_dir: Path,
+    actual_duration: float,
+    target: dict[str, Any],
+    logs_dir: Path,
+) -> dict[str, Any]:
+    if video_renderer is None:
+        command_log_path = logs_dir / "ffmpeg_command.txt"
+        stderr_log_path = logs_dir / "ffmpeg_stderr.log"
+        command_log_path.write_text("FFmpeg was not executed for this render.\n", encoding="utf-8")
+        stderr_log_path.write_text("", encoding="utf-8")
+        return {
+            "rendered": False,
+            "version": "not_executed",
+            "command_log_path": str(command_log_path),
+            "stderr_log_path": str(stderr_log_path),
+        }
+    return video_renderer.render(render_dir=render_dir, duration_sec=actual_duration, target=target, logs_dir=logs_dir)
 
 
 def _build_subtitle(subtitle_items: list[dict[str, Any]]) -> str:
