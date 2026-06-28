@@ -1,0 +1,21 @@
+{
+  "schema_version": "youtube-1.0.0",
+  "platform_profile": "youtube_shorts",
+  "id": "trivia_submarine_black_001",
+  "topic": "深海で黒く見える潜水艦の雑学",
+  "title": "深海と黒い潜水艦",
+  "hook": "深海では黒い潜水艦が、想像以上に見つかりにくくなります。",
+  "target": {"duration_sec": 18, "aspect_ratio": "9:16", "resolution": {"width": 1080, "height": 1920}, "fps": 30, "video_format": {"container": "mp4", "video_codec": "libx264", "audio_codec": "aac", "pix_fmt": "yuv420p"}},
+  "voice": {"engine": "aivis_speech", "speaker": "Anneli", "speed_scale": 1.0, "pitch_scale": 0.0, "intonation_scale": 1.0, "sentence_gap_ms": 180},
+  "bgm": {"enabled": true, "strategy": "youtube_safe_bgm", "mood": "mysterious", "intensity": "low", "volume_db": -26, "fade_in_ms": 500, "fade_out_ms": 1200, "allow_sources": ["youtube_audio_library", "local_original"], "avoid": ["vocal", "too_loud", "copyright_risky"]},
+  "visual_strategy": {"source_priority": ["pexels", "local"], "preferred_orientation": "portrait", "fallback": "crop_landscape_to_9_16", "primary_query": "deep ocean submarine", "fallback_queries": ["dark ocean", "underwater light", "deep sea"], "avoid_keywords": ["aquarium", "toy"]},
+  "script": [
+    {"index": 1, "text": "深海では、太陽の光がほとんど届きません。", "visual_query": "dark deep ocean", "estimated_duration_sec": 3.5, "caption_style_hint": "normal"},
+    {"index": 2, "text": "だから黒い物体は、背景の暗さに溶け込みやすくなります。", "visual_query": "black submarine underwater", "estimated_duration_sec": 4.5, "caption_style_hint": "emphasis"},
+    {"index": 3, "text": "潜水艦の色は、見た目よりも任務と環境に合わせて選ばれます。", "visual_query": "submarine underwater silhouette", "estimated_duration_sec": 5.0, "caption_style_hint": "punchline"}
+  ],
+  "youtube": {"title": "深海で黒い潜水艦が見つかりにくい理由 #Shorts", "description": "深海と潜水艦の色に関する短い雑学です。", "hashtags": ["#雑学", "#潜水艦", "#Shorts"], "tags": ["雑学", "潜水艦", "深海"], "category_hint": "education", "privacy_status": "private", "made_for_kids": false, "contains_synthetic_voice": true, "description_sections": {"summary": "深海では光が少ないため、黒い物体は背景に溶け込みやすくなります。", "credits_policy": "include_pexels_and_bgm_credits", "disclaimer": "投稿前に内容のファクトチェックを行ってください。"}, "analytics_hypothesis": {"experiment_group": "sample_mysterious_low", "hypothesis": "冒頭で深海の意外性を出すと視聴維持率が上がる。", "primary_metric": "average_view_percentage", "secondary_metrics": ["views", "likes"]}},
+  "manual_fact_check_required": true,
+  "fact_check_notes": "公開前に潜水艦塗装の一般論として確認する。",
+  "production_notes": "初期MVP確認用サンプル。"
+}
