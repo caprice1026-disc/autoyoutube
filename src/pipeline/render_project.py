@@ -169,7 +169,7 @@ def _generate_voice_and_timing(
         else:
             voice_service.synthesize_to_file(
                 item["text"],
-                voice["speaker"],
+                voice.get("style_id", voice["speaker"]),
                 wav_path,
                 voice["speed_scale"],
                 voice["pitch_scale"],

@@ -186,3 +186,33 @@ def test_render_project_uses_actual_voice_durations_for_audio_and_subtitles(
             Path("schemas/rendered.youtube.schema.json").read_text(encoding="utf-8")
         )
     ).validate(rendered)
+
+
+def test_render_project_prefers_voice_style_id_when_present(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project = _project()
+    project["voice"]["style_id"] = 888753760
+    project_path = tmp_path / "project.youtube.json"
+    project_path.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(render_module, "RENDERS_DIR", tmp_path / "renders")
+    monkeypatch.setattr(render_module, "init_db", lambda: None)
+    monkeypatch.setattr(render_module, "connect", lambda: NullConnection())
+    monkeypatch.setattr(render_module, "list_active_bgm_tracks", lambda connection: [])
+    monkeypatch.setattr(
+        render_module, "list_active_media_assets", lambda connection: []
+    )
+    monkeypatch.setattr(render_module, "upsert_project", lambda *args: None)
+    monkeypatch.setattr(render_module, "insert_render_summary", lambda *args: None)
+    voice_service = FakeVoiceService([1.0, 1.0, 1.0])
+
+    rendered_path = render_project(project_path, voice_service=voice_service)
+
+    rendered = json.loads(rendered_path.read_text(encoding="utf-8"))
+    assert voice_service.calls == [
+        ("First sentence", "888753760"),
+        ("Second sentence", "888753760"),
+        ("Third sentence", "888753760"),
+    ]
+    assert rendered["voice"]["speaker"] == "Anneli"
+    assert rendered["voice"]["style_id"] == 888753760

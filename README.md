@@ -7,6 +7,8 @@ YouTube Shorts向けの雑学ショート動画を、ローカル環境で半自
 ## 現在できること
 
 - `project.youtube.json` / `rendered.youtube.json` のJSON Schema検証
+- `voice.style_id` の任意指定と、AivisSpeech生成時のstyle ID優先利用
+- `rendered.youtube.json` の音声、映像、字幕、credits、validation、manual_review構造の厳密検証
 - SQLite DB初期化とproject/render履歴の保存
 - AivisSpeech API連携、またはdry-run無音WAV生成
 - WAVの実測時間に基づく字幕タイミング生成
@@ -80,6 +82,28 @@ $env:AIVIS_SPEECH_BASE_URL = "http://127.0.0.1:10101"
 ```powershell
 .\.venv\Scripts\python.exe -m src.main --debug render projects\trivia_submarine_black_001\project.youtube.json
 ```
+
+## スキーマ契約
+
+`project.youtube.json` の `voice.style_id` は任意項目です。指定した場合、AivisSpeechへのリクエストでは `speaker` より `style_id` を優先します。`speaker` は表示名やメモとして残せるため、既存project JSONはそのまま使えます。
+
+```json
+{
+  "voice": {
+    "engine": "aivis_speech",
+    "speaker": "まお",
+    "style_id": 888753760,
+    "speed_scale": 1.0,
+    "pitch_scale": 0.0,
+    "intonation_scale": 1.0,
+    "sentence_gap_ms": 180
+  }
+}
+```
+
+`rendered.youtube.json` は、`audio.narration_files[]`, `visuals[]`, `subtitles.items[]`, `credits.items[]`, `ffmpeg`, `youtube.upload`, `validation.warnings[]`, `validation.errors[]`, `manual_review` の主要フィールドを厳密に検証します。creditsは `type` ではなく `credit_type` に統一しています。
+
+`render` の既定は `--video-mode dry-run` なので、FFmpegを実行しない検証用renderになります。実MP4生成では `--video-mode ffmpeg` を指定してください。
 
 ## BGM manifest
 

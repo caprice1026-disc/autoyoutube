@@ -6,7 +6,7 @@
   "title": "深海と黒い潜水艦",
   "hook": "深海では黒い潜水艦が、想像以上に見つかりにくくなります。",
   "target": {"duration_sec": 18, "aspect_ratio": "9:16", "resolution": {"width": 1080, "height": 1920}, "fps": 30, "video_format": {"container": "mp4", "video_codec": "libx264", "audio_codec": "aac", "pix_fmt": "yuv420p"}},
-  "voice": {"engine": "aivis_speech", "speaker": "Anneli", "speed_scale": 1.0, "pitch_scale": 0.0, "intonation_scale": 1.0, "sentence_gap_ms": 180},
+  "voice": {"engine": "aivis_speech", "speaker": "まお", "style_id": 888753760, "speed_scale": 1.0, "pitch_scale": 0.0, "intonation_scale": 1.0, "sentence_gap_ms": 180},
   "bgm": {"enabled": true, "strategy": "youtube_safe_bgm", "mood": "mysterious", "intensity": "low", "volume_db": -26, "fade_in_ms": 500, "fade_out_ms": 1200, "allow_sources": ["youtube_audio_library", "local_original"], "avoid": ["vocal", "too_loud", "copyright_risky"]},
   "visual_strategy": {"source_priority": ["pexels", "local"], "preferred_orientation": "portrait", "fallback": "crop_landscape_to_9_16", "primary_query": "deep ocean submarine", "fallback_queries": ["dark ocean", "underwater light", "deep sea"], "avoid_keywords": ["aquarium", "toy"]},
   "script": [
