@@ -50,19 +50,37 @@ def load_json(path: Path) -> dict[str, Any]:
     return data
 
 
-def validate_json(data: dict[str, Any], schema: dict[str, Any]) -> list[ValidationMessage]:
+def validate_json(
+    data: dict[str, Any], schema: dict[str, Any]
+) -> list[ValidationMessage]:
     validator = Draft202012Validator(schema, format_checker=FormatChecker())
-    return [_format_error(error) for error in sorted(validator.iter_errors(data), key=lambda item: list(item.path))]
+    return [
+        _format_error(error)
+        for error in sorted(
+            validator.iter_errors(data), key=lambda item: list(item.path)
+        )
+    ]
 
 
-def validate_json_file(json_path: Path, schema_path: Path) -> tuple[dict[str, Any], list[ValidationMessage]]:
+def validate_json_file(
+    json_path: Path, schema_path: Path
+) -> tuple[dict[str, Any], list[ValidationMessage]]:
     data = load_json(json_path)
     schema = load_json(schema_path)
     return data, validate_json(data, schema)
 
 
 def _format_error(error: ValidationError) -> ValidationMessage:
-    path = "$" + "".join(f"[{part}]" if isinstance(part, int) else f".{part}" for part in error.absolute_path)
+    path = "$" + "".join(
+        f"[{part}]" if isinstance(part, int) else f".{part}"
+        for part in error.absolute_path
+    )
     actual = error.instance
     expected = error.validator_value
-    return ValidationMessage(path=path, message=error.message, validator=error.validator, expected=expected, actual=actual)
+    return ValidationMessage(
+        path=path,
+        message=error.message,
+        validator=error.validator,
+        expected=expected,
+        actual=actual,
+    )

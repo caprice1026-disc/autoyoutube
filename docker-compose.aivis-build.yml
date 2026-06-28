@@ -1,0 +1,4 @@
+services:
+  aivis-engine:
+    build:
+      context: ${AIVIS_ENGINE_CONTEXT:-./AivisSpeech-Engine}

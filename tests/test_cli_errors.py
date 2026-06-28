@@ -6,7 +6,9 @@ from pathlib import Path
 from src.main import main
 
 
-def test_validate_project_missing_file_returns_actionable_error(monkeypatch, capsys, tmp_path: Path) -> None:
+def test_validate_project_missing_file_returns_actionable_error(
+    monkeypatch, capsys, tmp_path: Path
+) -> None:
     missing_path = tmp_path / "missing.project.youtube.json"
     monkeypatch.setattr(sys, "argv", ["tsm", "validate-project", str(missing_path)])
 
@@ -20,13 +22,23 @@ def test_validate_project_missing_file_returns_actionable_error(monkeypatch, cap
     assert "Traceback" not in captured.err
 
 
-def test_render_missing_ffmpeg_path_returns_actionable_error(monkeypatch, capsys) -> None:
+def test_render_missing_ffmpeg_path_returns_actionable_error(
+    monkeypatch, capsys
+) -> None:
     project_path = Path("projects/trivia_submarine_black_001/project.youtube.json")
     missing_ffmpeg = Path("C:/missing/ffmpeg.exe")
     monkeypatch.setattr(
         sys,
         "argv",
-        ["tsm", "render", str(project_path), "--video-mode", "ffmpeg", "--ffmpeg-path", str(missing_ffmpeg)],
+        [
+            "tsm",
+            "render",
+            str(project_path),
+            "--video-mode",
+            "ffmpeg",
+            "--ffmpeg-path",
+            str(missing_ffmpeg),
+        ],
     )
 
     exit_code = main()

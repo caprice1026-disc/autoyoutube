@@ -15,7 +15,9 @@ class FakeConnection:
         return None
 
 
-def test_import_bgm_cli_loads_manifest_and_reports_count(monkeypatch, capsys, tmp_path: Path) -> None:
+def test_import_bgm_cli_loads_manifest_and_reports_count(
+    monkeypatch, capsys, tmp_path: Path
+) -> None:
     audio_path = tmp_path / "mystery.wav"
     audio_path.write_bytes(b"placeholder")
     manifest_path = tmp_path / "bgm.json"
@@ -42,7 +44,11 @@ def test_import_bgm_cli_loads_manifest_and_reports_count(monkeypatch, capsys, tm
     monkeypatch.setattr(sys, "argv", ["tsm", "import-bgm", str(manifest_path)])
     monkeypatch.setattr(main_module, "init_db", lambda: None)
     monkeypatch.setattr(main_module, "connect", lambda: FakeConnection())
-    monkeypatch.setattr(main_module, "upsert_bgm_tracks", lambda connection, tracks: imported.extend(track.track_id for track in tracks))
+    monkeypatch.setattr(
+        main_module,
+        "upsert_bgm_tracks",
+        lambda connection, tracks: imported.extend(track.track_id for track in tracks),
+    )
 
     exit_code = main_module.main()
 

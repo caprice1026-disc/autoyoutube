@@ -60,7 +60,9 @@ def test_load_bgm_manifest_resolves_relative_paths_and_defaults(tmp_path: Path) 
     ]
 
 
-def test_select_bgm_track_matches_project_plan_and_lowest_used_count(tmp_path: Path) -> None:
+def test_select_bgm_track_matches_project_plan_and_lowest_used_count(
+    tmp_path: Path,
+) -> None:
     selected = select_bgm_track(
         {
             "enabled": True,
@@ -113,7 +115,9 @@ def test_select_bgm_track_matches_project_plan_and_lowest_used_count(tmp_path: P
     assert selected.track_id == "fresh"
 
 
-def test_select_bgm_track_raises_actionable_error_when_no_track_matches(tmp_path: Path) -> None:
+def test_select_bgm_track_raises_actionable_error_when_no_track_matches(
+    tmp_path: Path,
+) -> None:
     with pytest.raises(AppError) as exc_info:
         select_bgm_track(
             {
@@ -147,7 +151,10 @@ def test_select_bgm_track_raises_actionable_error_when_no_track_matches(tmp_path
         )
 
     assert exc_info.value.message == "No BGM track matched project requirements."
-    assert exc_info.value.next_step == "Import a matching BGM manifest or change project.bgm settings."
+    assert (
+        exc_info.value.next_step
+        == "Import a matching BGM manifest or change project.bgm settings."
+    )
 
 
 def test_bgm_tracks_round_trip_through_database(tmp_path: Path) -> None:

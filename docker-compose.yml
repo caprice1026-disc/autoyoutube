@@ -1,0 +1,29 @@
+services:
+  app:
+    build:
+      context: .
+    environment:
+      AIVIS_SPEECH_BASE_URL: ${AIVIS_SPEECH_BASE_URL:-http://aivis-engine:10101}
+      FFMPEG_PATH: /usr/bin/ffmpeg
+    volumes:
+      - ./assets:/app/assets
+      - ./data:/app/data
+      - ./projects:/app/projects:ro
+      - ./renders:/app/renders
+    networks:
+      - autoyoutube
+
+  aivis-engine:
+    image: ${AIVIS_ENGINE_IMAGE:-ghcr.io/aivis-project/aivisspeech-engine:cpu-latest}
+    profiles:
+      - aivis
+    ports:
+      - "10101:10101"
+    volumes:
+      - ${AIVIS_ENGINE_DATA_DIR:-./data/aivis-engine}:/home/user/.local/share/AivisSpeech-Engine-Dev
+    networks:
+      - autoyoutube
+
+networks:
+  autoyoutube:
+    name: autoyoutube

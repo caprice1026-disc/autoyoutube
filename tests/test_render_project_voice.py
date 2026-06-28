@@ -40,7 +40,9 @@ class NullConnection:
         return None
 
 
-def _write_silent_wav(path: Path, duration_sec: float, *, framerate: int = 8000) -> None:
+def _write_silent_wav(
+    path: Path, duration_sec: float, *, framerate: int = 8000
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with wave.open(str(path), "wb") as wav:
         wav.setnchannels(1)
@@ -62,7 +64,12 @@ def _project() -> dict[str, Any]:
             "aspect_ratio": "9:16",
             "resolution": {"width": 1080, "height": 1920},
             "fps": 30,
-            "video_format": {"container": "mp4", "video_codec": "libx264", "audio_codec": "aac", "pix_fmt": "yuv420p"},
+            "video_format": {
+                "container": "mp4",
+                "video_codec": "libx264",
+                "audio_codec": "aac",
+                "pix_fmt": "yuv420p",
+            },
         },
         "voice": {
             "engine": "aivis_speech",
@@ -92,9 +99,27 @@ def _project() -> dict[str, Any]:
             "avoid_keywords": ["toy"],
         },
         "script": [
-            {"index": 1, "text": "First sentence", "visual_query": "ocean", "estimated_duration_sec": 3.0, "caption_style_hint": "normal"},
-            {"index": 2, "text": "Second sentence", "visual_query": "submarine", "estimated_duration_sec": 3.0, "caption_style_hint": "emphasis"},
-            {"index": 3, "text": "Third sentence", "visual_query": "dark water", "estimated_duration_sec": 3.0, "caption_style_hint": "punchline"},
+            {
+                "index": 1,
+                "text": "First sentence",
+                "visual_query": "ocean",
+                "estimated_duration_sec": 3.0,
+                "caption_style_hint": "normal",
+            },
+            {
+                "index": 2,
+                "text": "Second sentence",
+                "visual_query": "submarine",
+                "estimated_duration_sec": 3.0,
+                "caption_style_hint": "emphasis",
+            },
+            {
+                "index": 3,
+                "text": "Third sentence",
+                "visual_query": "dark water",
+                "estimated_duration_sec": 3.0,
+                "caption_style_hint": "punchline",
+            },
         ],
         "youtube": {
             "title": "Deep sea facts #Shorts",
@@ -105,7 +130,11 @@ def _project() -> dict[str, Any]:
             "privacy_status": "private",
             "made_for_kids": False,
             "contains_synthetic_voice": True,
-            "description_sections": {"summary": "Summary", "credits_policy": "include_bgm_credits_only", "disclaimer": "Check facts before publishing."},
+            "description_sections": {
+                "summary": "Summary",
+                "credits_policy": "include_bgm_credits_only",
+                "disclaimer": "Check facts before publishing.",
+            },
             "analytics_hypothesis": {
                 "experiment_group": "voice_test",
                 "hypothesis": "Short factual narration keeps viewers watching.",
@@ -117,13 +146,20 @@ def _project() -> dict[str, Any]:
     }
 
 
-def test_render_project_uses_actual_voice_durations_for_audio_and_subtitles(tmp_path: Path, monkeypatch) -> None:
+def test_render_project_uses_actual_voice_durations_for_audio_and_subtitles(
+    tmp_path: Path, monkeypatch
+) -> None:
     project_path = tmp_path / "project.youtube.json"
-    project_path.write_text(json.dumps(_project(), ensure_ascii=False), encoding="utf-8")
+    project_path.write_text(
+        json.dumps(_project(), ensure_ascii=False), encoding="utf-8"
+    )
     monkeypatch.setattr(render_module, "RENDERS_DIR", tmp_path / "renders")
     monkeypatch.setattr(render_module, "init_db", lambda: None)
     monkeypatch.setattr(render_module, "connect", lambda: NullConnection())
     monkeypatch.setattr(render_module, "list_active_bgm_tracks", lambda connection: [])
+    monkeypatch.setattr(
+        render_module, "list_active_media_assets", lambda connection: []
+    )
     monkeypatch.setattr(render_module, "upsert_project", lambda *args: None)
     monkeypatch.setattr(render_module, "insert_render_summary", lambda *args: None)
     voice_service = FakeVoiceService([1.0, 1.5, 2.0])
@@ -131,10 +167,22 @@ def test_render_project_uses_actual_voice_durations_for_audio_and_subtitles(tmp_
     rendered_path = render_project(project_path, voice_service=voice_service)
 
     rendered = json.loads(rendered_path.read_text(encoding="utf-8"))
-    assert voice_service.calls == [("First sentence", "Anneli"), ("Second sentence", "Anneli"), ("Third sentence", "Anneli")]
+    assert voice_service.calls == [
+        ("First sentence", "Anneli"),
+        ("Second sentence", "Anneli"),
+        ("Third sentence", "Anneli"),
+    ]
     audio_dir = rendered_path.parent / "audio"
     assert (audio_dir / "001.wav").exists()
     assert get_wav_duration(audio_dir / "narration.wav") == 4.9
-    assert [item["actual_duration_sec"] for item in rendered["audio"]["narration_files"]] == [1.0, 1.5, 2.0]
-    assert [(item["start_sec"], item["end_sec"]) for item in rendered["subtitles"]["items"]] == [(0.0, 1.0), (1.2, 2.7), (2.9, 4.9)]
-    Draft202012Validator(json.loads(Path("schemas/rendered.youtube.schema.json").read_text(encoding="utf-8"))).validate(rendered)
+    assert [
+        item["actual_duration_sec"] for item in rendered["audio"]["narration_files"]
+    ] == [1.0, 1.5, 2.0]
+    assert [
+        (item["start_sec"], item["end_sec"]) for item in rendered["subtitles"]["items"]
+    ] == [(0.0, 1.0), (1.2, 2.7), (2.9, 4.9)]
+    Draft202012Validator(
+        json.loads(
+            Path("schemas/rendered.youtube.schema.json").read_text(encoding="utf-8")
+        )
+    ).validate(rendered)

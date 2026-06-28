@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import json
-import wave
 from pathlib import Path
 from typing import Any
 
 from src.bgm.library import BgmTrack
+from src.media.library import MediaAsset
 from src.pipeline.render_project import render_project
 import src.pipeline.render_project as render_module
 
@@ -30,8 +30,18 @@ class FakeVideoRenderer:
         target: dict[str, Any],
         logs_dir: Path,
         bgm: dict[str, Any] | None = None,
+        visuals: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
-        self.calls.append({"render_dir": render_dir, "duration_sec": duration_sec, "target": target, "logs_dir": logs_dir, "bgm": bgm})
+        self.calls.append(
+            {
+                "render_dir": render_dir,
+                "duration_sec": duration_sec,
+                "target": target,
+                "logs_dir": logs_dir,
+                "bgm": bgm,
+                "visuals": visuals,
+            }
+        )
         (render_dir / "output.mp4").write_bytes(b"fake mp4")
         (logs_dir / "ffmpeg_command.txt").write_text("ffmpeg fake\n", encoding="utf-8")
         (logs_dir / "ffmpeg_stderr.log").write_text("", encoding="utf-8")
@@ -56,15 +66,62 @@ def _project() -> dict[str, Any]:
             "aspect_ratio": "9:16",
             "resolution": {"width": 1080, "height": 1920},
             "fps": 30,
-            "video_format": {"container": "mp4", "video_codec": "libx264", "audio_codec": "aac", "pix_fmt": "yuv420p"},
+            "video_format": {
+                "container": "mp4",
+                "video_codec": "libx264",
+                "audio_codec": "aac",
+                "pix_fmt": "yuv420p",
+            },
         },
-        "voice": {"engine": "aivis_speech", "speaker": "Anneli", "speed_scale": 1.0, "pitch_scale": 0.0, "intonation_scale": 1.0, "sentence_gap_ms": 100},
-        "bgm": {"enabled": True, "strategy": "youtube_safe_bgm", "mood": "mysterious", "intensity": "low", "volume_db": -26, "fade_in_ms": 500, "fade_out_ms": 1200, "allow_sources": ["youtube_audio_library"], "avoid": ["vocal"]},
-        "visual_strategy": {"source_priority": ["local"], "preferred_orientation": "portrait", "fallback": "crop_landscape_to_9_16", "primary_query": "deep ocean", "fallback_queries": ["ocean"], "avoid_keywords": ["toy"]},
+        "voice": {
+            "engine": "aivis_speech",
+            "speaker": "Anneli",
+            "speed_scale": 1.0,
+            "pitch_scale": 0.0,
+            "intonation_scale": 1.0,
+            "sentence_gap_ms": 100,
+        },
+        "bgm": {
+            "enabled": True,
+            "strategy": "youtube_safe_bgm",
+            "mood": "mysterious",
+            "intensity": "low",
+            "volume_db": -26,
+            "fade_in_ms": 500,
+            "fade_out_ms": 1200,
+            "allow_sources": ["youtube_audio_library"],
+            "avoid": ["vocal"],
+        },
+        "visual_strategy": {
+            "source_priority": ["local"],
+            "preferred_orientation": "portrait",
+            "fallback": "crop_landscape_to_9_16",
+            "primary_query": "deep ocean",
+            "fallback_queries": ["ocean"],
+            "avoid_keywords": ["toy"],
+        },
         "script": [
-            {"index": 1, "text": "First sentence", "visual_query": "ocean", "estimated_duration_sec": 1.0, "caption_style_hint": "normal"},
-            {"index": 2, "text": "Second sentence", "visual_query": "submarine", "estimated_duration_sec": 1.0, "caption_style_hint": "emphasis"},
-            {"index": 3, "text": "Third sentence", "visual_query": "dark water", "estimated_duration_sec": 1.0, "caption_style_hint": "punchline"},
+            {
+                "index": 1,
+                "text": "First sentence",
+                "visual_query": "ocean",
+                "estimated_duration_sec": 1.0,
+                "caption_style_hint": "normal",
+            },
+            {
+                "index": 2,
+                "text": "Second sentence",
+                "visual_query": "submarine",
+                "estimated_duration_sec": 1.0,
+                "caption_style_hint": "emphasis",
+            },
+            {
+                "index": 3,
+                "text": "Third sentence",
+                "visual_query": "dark water",
+                "estimated_duration_sec": 1.0,
+                "caption_style_hint": "punchline",
+            },
         ],
         "youtube": {
             "title": "Deep sea facts #Shorts",
@@ -75,20 +132,36 @@ def _project() -> dict[str, Any]:
             "privacy_status": "private",
             "made_for_kids": False,
             "contains_synthetic_voice": True,
-            "description_sections": {"summary": "Summary", "credits_policy": "include_bgm_credits_only", "disclaimer": "Check facts before publishing."},
-            "analytics_hypothesis": {"experiment_group": "ffmpeg_test", "hypothesis": "Short factual narration keeps viewers watching.", "primary_metric": "average_view_percentage", "secondary_metrics": ["views"]},
+            "description_sections": {
+                "summary": "Summary",
+                "credits_policy": "include_bgm_credits_only",
+                "disclaimer": "Check facts before publishing.",
+            },
+            "analytics_hypothesis": {
+                "experiment_group": "ffmpeg_test",
+                "hypothesis": "Short factual narration keeps viewers watching.",
+                "primary_metric": "average_view_percentage",
+                "secondary_metrics": ["views"],
+            },
         },
         "manual_fact_check_required": True,
     }
 
 
-def test_render_project_uses_video_renderer_and_marks_video_success(tmp_path: Path, monkeypatch) -> None:
+def test_render_project_uses_video_renderer_and_marks_video_success(
+    tmp_path: Path, monkeypatch
+) -> None:
     project_path = tmp_path / "project.youtube.json"
-    project_path.write_text(json.dumps(_project(), ensure_ascii=False), encoding="utf-8")
+    project_path.write_text(
+        json.dumps(_project(), ensure_ascii=False), encoding="utf-8"
+    )
     monkeypatch.setattr(render_module, "RENDERS_DIR", tmp_path / "renders")
     monkeypatch.setattr(render_module, "init_db", lambda: None)
     monkeypatch.setattr(render_module, "connect", lambda: NullConnection())
     monkeypatch.setattr(render_module, "list_active_bgm_tracks", lambda connection: [])
+    monkeypatch.setattr(
+        render_module, "list_active_media_assets", lambda connection: []
+    )
     monkeypatch.setattr(render_module, "upsert_project", lambda *args: None)
     monkeypatch.setattr(render_module, "insert_render_summary", lambda *args: None)
     renderer = FakeVideoRenderer()
@@ -100,10 +173,17 @@ def test_render_project_uses_video_renderer_and_marks_video_success(tmp_path: Pa
     assert (rendered_path.parent / "output.mp4").read_bytes() == b"fake mp4"
     assert rendered["status"] == "success"
     assert rendered["ffmpeg"]["version"] == "ffmpeg test"
-    assert rendered["validation"]["warnings"] == [{"code": "DRY_RUN_VOICE", "message": "Silent placeholder WAV files were generated from estimated durations."}]
+    assert rendered["validation"]["warnings"] == [
+        {
+            "code": "DRY_RUN_VOICE",
+            "message": "Silent placeholder WAV files were generated from estimated durations.",
+        }
+    ]
 
 
-def test_render_project_selects_bgm_and_passes_it_to_video_renderer(tmp_path: Path, monkeypatch) -> None:
+def test_render_project_selects_bgm_and_passes_it_to_video_renderer(
+    tmp_path: Path, monkeypatch
+) -> None:
     project = _project()
     project["bgm"]["strategy"] = "local_safe_bgm"
     project["bgm"]["allow_sources"] = ["local_original"]
@@ -132,7 +212,12 @@ def test_render_project_selects_bgm_and_passes_it_to_video_renderer(tmp_path: Pa
     monkeypatch.setattr(render_module, "RENDERS_DIR", tmp_path / "renders")
     monkeypatch.setattr(render_module, "init_db", lambda: None)
     monkeypatch.setattr(render_module, "connect", lambda: NullConnection())
-    monkeypatch.setattr(render_module, "list_active_bgm_tracks", lambda connection: [track])
+    monkeypatch.setattr(
+        render_module, "list_active_bgm_tracks", lambda connection: [track]
+    )
+    monkeypatch.setattr(
+        render_module, "list_active_media_assets", lambda connection: []
+    )
     monkeypatch.setattr(render_module, "upsert_project", lambda *args: None)
     monkeypatch.setattr(render_module, "insert_render_summary", lambda *args: None)
     renderer = FakeVideoRenderer()
@@ -147,4 +232,55 @@ def test_render_project_selects_bgm_and_passes_it_to_video_renderer(tmp_path: Pa
     assert rendered["bgm"]["track_id"] == "mystery_low"
     assert rendered["bgm"]["looped"] is False
     assert rendered["credits"]["required"] is True
-    assert rendered["credits"]["items"] == [{"credit_type": "bgm", "source": "local_original", "text": "BGM: Mystery Low by Local", "url": None}]
+    assert rendered["credits"]["items"] == [
+        {
+            "credit_type": "bgm",
+            "source": "local_original",
+            "text": "BGM: Mystery Low by Local",
+            "url": None,
+        }
+    ]
+
+
+def test_render_project_selects_local_media_and_passes_visuals_to_video_renderer(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project_path = tmp_path / "project.youtube.json"
+    project_path.write_text(
+        json.dumps(_project(), ensure_ascii=False), encoding="utf-8"
+    )
+    media_path = tmp_path / "ocean.mp4"
+    media_path.write_bytes(b"fake mp4")
+    asset = MediaAsset(
+        asset_id="ocean_portrait",
+        source="local",
+        local_file_path=media_path,
+        original_width=1080,
+        original_height=1920,
+        original_duration_sec=8.0,
+        orientation="portrait",
+        selected_quality="hd",
+        query="dark ocean",
+        tags=["ocean"],
+        used_count=0,
+        is_active=True,
+    )
+    monkeypatch.setattr(render_module, "RENDERS_DIR", tmp_path / "renders")
+    monkeypatch.setattr(render_module, "init_db", lambda: None)
+    monkeypatch.setattr(render_module, "connect", lambda: NullConnection())
+    monkeypatch.setattr(render_module, "list_active_bgm_tracks", lambda connection: [])
+    monkeypatch.setattr(
+        render_module, "list_active_media_assets", lambda connection: [asset]
+    )
+    monkeypatch.setattr(render_module, "upsert_project", lambda *args: None)
+    monkeypatch.setattr(render_module, "insert_render_summary", lambda *args: None)
+    renderer = FakeVideoRenderer()
+
+    rendered_path = render_project(project_path, video_renderer=renderer)
+
+    rendered = json.loads(rendered_path.read_text(encoding="utf-8"))
+    first_visual = rendered["visuals"][0]
+    assert first_visual["asset_id"] == "ocean_portrait"
+    assert first_visual["local_file_path"] == str(media_path)
+    assert first_visual["source"] == "local"
+    assert renderer.calls[0]["visuals"][0]["asset_id"] == "ocean_portrait"

@@ -208,10 +208,13 @@ __marimo__/
 
 # Trivia Shorts Maker generated artifacts
 data/*.db
+data/aivis-engine/
 renders/
 assets/pexels/
 assets/bgm/
 assets/fonts/
+assets/local_media/
+AivisSpeech-Engine/
 *.png
 *.jpg
 *.jpeg

@@ -6,7 +6,9 @@ from src.bgm.library import BgmTrack
 from src.errors import AppError
 
 
-def select_bgm_track(project_bgm: dict[str, Any], tracks: Sequence[BgmTrack]) -> BgmTrack | None:
+def select_bgm_track(
+    project_bgm: dict[str, Any], tracks: Sequence[BgmTrack]
+) -> BgmTrack | None:
     if not project_bgm.get("enabled") or project_bgm.get("strategy") == "none":
         return None
 

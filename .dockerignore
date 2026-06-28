@@ -1,0 +1,17 @@
+.git
+.venv
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+data/
+renders/
+assets/bgm/
+assets/pexels/
+assets/fonts/
+AivisSpeech/
+AivisSpeech-Engine/
+*.pyc
+*.png
+*.jpg
+*.jpeg

@@ -23,6 +23,7 @@ class FfmpegRenderRequest:
     video_codec: str
     audio_codec: str
     pix_fmt: str
+    background_video_path: Path | None = None
     bgm_path: Path | None = None
     bgm_volume_db: float = -26
     bgm_fade_in_sec: float = 0.5
@@ -30,23 +31,70 @@ class FfmpegRenderRequest:
 
 
 def build_ffmpeg_command(request: FfmpegRenderRequest, ffmpeg_path: Path) -> list[str]:
-    command = [
-        str(ffmpeg_path),
-        "-y",
-        "-f",
-        "lavfi",
-        "-i",
-        f"color=c=0x07111f:s={request.width}x{request.height}:r={request.fps}:d={request.duration_sec:.3f}",
-        "-i",
-        _relative_arg(request.audio_path, request.render_dir),
-    ]
-    if request.bgm_path is not None:
-        command.extend(["-stream_loop", "-1", "-i", _relative_arg(request.bgm_path, request.render_dir)])
-    command.extend(["-vf", f"subtitles={_relative_arg(request.subtitle_path, request.render_dir)}"])
-    if request.bgm_path is not None:
-        command.extend(["-filter_complex", _bgm_filter(request), "-shortest", "-c:v", request.video_codec, "-pix_fmt", request.pix_fmt, "-r", str(request.fps), "-c:a", request.audio_codec, "-map", "0:v", "-map", "[aout]"])
+    command = [str(ffmpeg_path), "-y"]
+    if request.background_video_path is not None:
+        command.extend(
+            [
+                "-stream_loop",
+                "-1",
+                "-i",
+                _relative_arg(request.background_video_path, request.render_dir),
+            ]
+        )
     else:
-        command.extend(["-shortest", "-c:v", request.video_codec, "-pix_fmt", request.pix_fmt, "-r", str(request.fps), "-c:a", request.audio_codec])
+        command.extend(
+            [
+                "-f",
+                "lavfi",
+                "-i",
+                f"color=c=0x07111f:s={request.width}x{request.height}:r={request.fps}:d={request.duration_sec:.3f}",
+            ]
+        )
+    command.extend(["-i", _relative_arg(request.audio_path, request.render_dir)])
+    if request.bgm_path is not None:
+        command.extend(
+            [
+                "-stream_loop",
+                "-1",
+                "-i",
+                _relative_arg(request.bgm_path, request.render_dir),
+            ]
+        )
+    command.extend(["-vf", _video_filter(request)])
+    if request.bgm_path is not None:
+        command.extend(
+            [
+                "-filter_complex",
+                _bgm_filter(request),
+                "-shortest",
+                "-c:v",
+                request.video_codec,
+                "-pix_fmt",
+                request.pix_fmt,
+                "-r",
+                str(request.fps),
+                "-c:a",
+                request.audio_codec,
+                "-map",
+                "0:v",
+                "-map",
+                "[aout]",
+            ]
+        )
+    else:
+        command.extend(
+            [
+                "-shortest",
+                "-c:v",
+                request.video_codec,
+                "-pix_fmt",
+                request.pix_fmt,
+                "-r",
+                str(request.fps),
+                "-c:a",
+                request.audio_codec,
+            ]
+        )
     command.append(_relative_arg(request.output_path, request.render_dir))
     return command
 
@@ -92,6 +140,7 @@ class FfmpegVideoRenderer:
         target: dict,
         logs_dir: Path,
         bgm: dict | None = None,
+        visuals: list[dict] | None = None,
     ) -> dict[str, str | bool]:
         video_format = target["video_format"]
         resolution = target["resolution"]
@@ -108,6 +157,7 @@ class FfmpegVideoRenderer:
             video_codec=video_format["video_codec"],
             audio_codec=video_format["audio_codec"],
             pix_fmt=video_format["pix_fmt"],
+            background_video_path=_visual_background_path(visuals),
             bgm_path=Path(bgm["file_path"]) if bgm else None,
             bgm_volume_db=float(bgm["volume_db"]) if bgm else -26,
             bgm_fade_in_sec=float(bgm["fade_in_ms"]) / 1000 if bgm else 0.5,
@@ -145,6 +195,36 @@ def _relative_arg(path: Path, root: Path) -> str:
         return path.resolve().as_posix()
 
 
+def _video_filter(request: FfmpegRenderRequest) -> str:
+    subtitle_filter = (
+        f"subtitles={_relative_arg(request.subtitle_path, request.render_dir)}"
+    )
+    if request.background_video_path is None:
+        return subtitle_filter
+    return (
+        f"scale={request.width}:{request.height}:force_original_aspect_ratio=increase,"
+        f"crop={request.width}:{request.height},"
+        f"{subtitle_filter}"
+    )
+
+
+def _visual_background_path(visuals: list[dict] | None) -> Path | None:
+    if not visuals:
+        return None
+    for visual in visuals:
+        if not visual.get("asset_id"):
+            continue
+        path = Path(visual["local_file_path"])
+        if path.is_file():
+            return path
+        raise AppError(
+            "Media background file was not found.",
+            location=str(path),
+            next_step="Re-import the media manifest or fix the asset local_file_path.",
+        )
+    return None
+
+
 def _bgm_filter(request: FfmpegRenderRequest) -> str:
     volume = 10 ** (request.bgm_volume_db / 20)
     fade_out_start = max(0.0, request.duration_sec - request.bgm_fade_out_sec)
@@ -168,7 +248,9 @@ def _winget_ffmpeg_candidates() -> list[Path]:
 
 
 def _ffmpeg_version(ffmpeg_path: Path) -> str:
-    result = subprocess.run([str(ffmpeg_path), "-version"], capture_output=True, text=True)
+    result = subprocess.run(
+        [str(ffmpeg_path), "-version"], capture_output=True, text=True
+    )
     if result.returncode != 0:
         return "unknown"
     return result.stdout.splitlines()[0] if result.stdout else "unknown"

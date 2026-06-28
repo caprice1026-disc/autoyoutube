@@ -37,10 +37,15 @@ def load_bgm_manifest(path: Path) -> list[BgmTrack]:
             location=str(path),
             next_step="Add a top-level tracks list and run import-bgm again.",
         )
-    return [_parse_track(item, path.parent, path, index) for index, item in enumerate(tracks_raw, start=1)]
+    return [
+        _parse_track(item, path.parent, path, index)
+        for index, item in enumerate(tracks_raw, start=1)
+    ]
 
 
-def _parse_track(item: Any, base_dir: Path, manifest_path: Path, index: int) -> BgmTrack:
+def _parse_track(
+    item: Any, base_dir: Path, manifest_path: Path, index: int
+) -> BgmTrack:
     if not isinstance(item, dict):
         raise AppError(
             "BGM manifest track must be an object.",
@@ -49,7 +54,12 @@ def _parse_track(item: Any, base_dir: Path, manifest_path: Path, index: int) -> 
         )
 
     track_id = _required_str(item, "track_id", manifest_path, index)
-    file_path = _resolve_audio_path(_required_str(item, "file_path", manifest_path, index), base_dir, manifest_path, track_id)
+    file_path = _resolve_audio_path(
+        _required_str(item, "file_path", manifest_path, index),
+        base_dir,
+        manifest_path,
+        track_id,
+    )
     return BgmTrack(
         track_id=track_id,
         file_path=file_path,
@@ -64,13 +74,17 @@ def _parse_track(item: Any, base_dir: Path, manifest_path: Path, index: int) -> 
         duration_sec=_optional_float(item.get("duration_sec")),
         bpm=_optional_float(item.get("bpm")),
         loopable=bool(item.get("loopable", True)),
-        allowed_platforms=[str(value) for value in item.get("allowed_platforms", ["youtube_shorts"])],
+        allowed_platforms=[
+            str(value) for value in item.get("allowed_platforms", ["youtube_shorts"])
+        ],
         used_count=int(item.get("used_count", 0)),
         is_active=bool(item.get("is_active", True)),
     )
 
 
-def _required_str(item: dict[str, Any], key: str, manifest_path: Path, index: int) -> str:
+def _required_str(
+    item: dict[str, Any], key: str, manifest_path: Path, index: int
+) -> str:
     value = item.get(key)
     if not isinstance(value, str) or not value.strip():
         raise AppError(
@@ -81,7 +95,9 @@ def _required_str(item: dict[str, Any], key: str, manifest_path: Path, index: in
     return value
 
 
-def _resolve_audio_path(value: str, base_dir: Path, manifest_path: Path, track_id: str) -> Path:
+def _resolve_audio_path(
+    value: str, base_dir: Path, manifest_path: Path, track_id: str
+) -> Path:
     path = Path(value)
     if not path.is_absolute():
         path = base_dir / path

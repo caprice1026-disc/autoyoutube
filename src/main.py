@@ -8,8 +8,14 @@ from pathlib import Path
 from src.bgm.library import load_bgm_manifest
 from src.config import PROJECT_SCHEMA_PATH, RENDERED_SCHEMA_PATH
 from src.db.database import connect, init_db
-from src.db.repositories import list_active_bgm_tracks, upsert_bgm_tracks
+from src.db.repositories import (
+    list_active_bgm_tracks,
+    list_active_media_assets,
+    upsert_bgm_tracks,
+    upsert_media_assets,
+)
 from src.errors import AppError
+from src.media.library import load_media_manifest
 from src.pipeline.render_project import render_project
 from src.render.ffmpeg_renderer import FfmpegVideoRenderer
 from src.validators.json_validator import validate_json_file
@@ -18,7 +24,9 @@ from src.voice.aivis_client import AivisSpeechClient
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Trivia Shorts Maker for YouTube")
-    parser.add_argument("--debug", action="store_true", help="print traceback for unexpected failures")
+    parser.add_argument(
+        "--debug", action="store_true", help="print traceback for unexpected failures"
+    )
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("init-db", help="initialize SQLite database")
     vp = sub.add_parser("validate-project", help="validate project.youtube.json")
@@ -28,11 +36,17 @@ def main() -> int:
     ib = sub.add_parser("import-bgm", help="import BGM tracks from a manifest JSON")
     ib.add_argument("manifest_path")
     sub.add_parser("list-bgm", help="list active BGM tracks")
+    im = sub.add_parser(
+        "import-media", help="import local media assets from a manifest JSON"
+    )
+    im.add_argument("manifest_path")
+    sub.add_parser("list-assets", help="list active media assets")
     rr = sub.add_parser("render", help="render project assets")
     rr.add_argument("path")
     rr.add_argument("--voice-mode", choices=["dry-run", "aivis"], default="dry-run")
     rr.add_argument("--video-mode", choices=["dry-run", "ffmpeg"], default="dry-run")
     rr.add_argument("--ffmpeg-path")
+    rr.add_argument("--aivis-base-url")
     args = parser.parse_args()
 
     try:
@@ -48,10 +62,26 @@ def main() -> int:
             return _import_bgm(Path(args.manifest_path))
         if args.command == "list-bgm":
             return _list_bgm()
+        if args.command == "import-media":
+            return _import_media(Path(args.manifest_path))
+        if args.command == "list-assets":
+            return _list_assets()
         if args.command == "render":
-            voice_service = AivisSpeechClient() if args.voice_mode == "aivis" else None
-            video_renderer = FfmpegVideoRenderer(args.ffmpeg_path) if args.video_mode == "ffmpeg" else None
-            output = render_project(Path(args.path), voice_service=voice_service, video_renderer=video_renderer)
+            voice_service = (
+                AivisSpeechClient(base_url=args.aivis_base_url)
+                if args.voice_mode == "aivis"
+                else None
+            )
+            video_renderer = (
+                FfmpegVideoRenderer(args.ffmpeg_path)
+                if args.video_mode == "ffmpeg"
+                else None
+            )
+            output = render_project(
+                Path(args.path),
+                voice_service=voice_service,
+                video_renderer=video_renderer,
+            )
             print(f"Render complete: {output}")
             return 0
     except AppError as exc:
@@ -101,7 +131,32 @@ def _list_bgm() -> int:
         print("No active BGM tracks.")
         return 0
     for track in tracks:
-        print(f"{track.track_id}\t{track.source}\t{track.mood}/{track.intensity}\t{track.file_path}")
+        print(
+            f"{track.track_id}\t{track.source}\t{track.mood}/{track.intensity}\t{track.file_path}"
+        )
+    return 0
+
+
+def _import_media(manifest_path: Path) -> int:
+    assets = load_media_manifest(manifest_path)
+    init_db()
+    with connect() as connection:
+        upsert_media_assets(connection, assets)
+    print(f"Imported media assets: {len(assets)}")
+    return 0
+
+
+def _list_assets() -> int:
+    init_db()
+    with connect() as connection:
+        assets = list_active_media_assets(connection)
+    if not assets:
+        print("No active media assets.")
+        return 0
+    for asset in assets:
+        print(
+            f"{asset.asset_id}\t{asset.source}\t{asset.orientation}\t{asset.query}\t{asset.local_file_path}"
+        )
     return 0
 
 
