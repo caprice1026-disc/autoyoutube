@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+import wave
 from pathlib import Path
 
 import src.main as main_module
@@ -188,6 +189,35 @@ def _rendered(render_dir: Path) -> dict:
     }
 
 
+def _write_wav(
+    path: Path,
+    samples: list[int],
+    *,
+    sample_rate: int = 44100,
+    channels: int = 1,
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(path), "wb") as wav:
+        wav.setnchannels(channels)
+        wav.setsampwidth(2)
+        wav.setframerate(sample_rate)
+        frames = b"".join(
+            sample.to_bytes(2, "little", signed=True) for sample in samples
+        )
+        wav.writeframes(frames)
+
+
+def _write_constant_wav(
+    path: Path,
+    *,
+    duration_sec: float = 3.0,
+    sample_rate: int = 44100,
+    amplitude: int = 12000,
+) -> None:
+    frame_count = int(duration_sec * sample_rate)
+    _write_wav(path, [amplitude] * frame_count, sample_rate=sample_rate)
+
+
 def test_evaluate_render_writes_quality_report_with_initial_checks(
     tmp_path: Path,
 ) -> None:
@@ -203,16 +233,31 @@ def test_evaluate_render_writes_quality_report_with_initial_checks(
     (render_dir / "credits.txt").write_text("", encoding="utf-8")
     (render_dir / "logs" / "ffmpeg_command.txt").write_text("ffmpeg", encoding="utf-8")
     (render_dir / "logs" / "ffmpeg_stderr.log").write_text("", encoding="utf-8")
+    _write_constant_wav(render_dir / "audio" / "final_audio.wav")
     rendered_path = render_dir / "rendered.youtube.json"
     rendered_path.write_text(
         json.dumps(_rendered(render_dir), ensure_ascii=False), encoding="utf-8"
     )
 
-    report = evaluate_render(rendered_path)
+    report = evaluate_render(
+        rendered_path,
+        video_probe=lambda _path: {
+            "duration_sec": 3.0,
+            "width": 1080,
+            "height": 1920,
+            "fps": 30.0,
+        },
+    )
 
     assert report["project_id"] == "quality_project"
     assert report["render_id"] == "render_quality"
     assert report["status"] == "error"
+    assert report["summary"] == {
+        "status": "error",
+        "error_count": 2,
+        "warning_count": 1,
+        "info_count": 0,
+    }
     assert {check["code"] for check in report["checks"]} == {
         "BGM_CREDIT_MISSING",
         "PEXELS_CREDIT_MISSING",
@@ -221,6 +266,11 @@ def test_evaluate_render_writes_quality_report_with_initial_checks(
     assert report["metrics"]["has_bgm"] is True
     assert report["metrics"]["has_pexels_visual"] is True
     assert report["metrics"]["max_subtitle_chars"] > 32
+    assert report["metrics"]["video_duration_sec"] == 3.0
+    assert report["metrics"]["video_width"] == 1080
+    assert report["metrics"]["video_height"] == 1920
+    assert all("auto_fixable" in check for check in report["checks"])
+    assert all("codex_hint" in check for check in report["checks"])
     written = json.loads(
         (render_dir / "quality_report.json").read_text(encoding="utf-8")
     )
@@ -242,6 +292,316 @@ def test_evaluate_render_reports_missing_and_empty_files(tmp_path: Path) -> None
     codes = {check["code"] for check in report["checks"]}
     assert "FILE_MISSING" in codes
     assert "OUTPUT_VIDEO_EMPTY" in codes
+
+
+def test_evaluate_render_reports_invalid_video_dimensions(tmp_path: Path) -> None:
+    from src.quality.evaluator import evaluate_render
+
+    render_dir = tmp_path / "render"
+    (render_dir / "logs").mkdir(parents=True)
+    (render_dir / "output.mp4").write_bytes(b"fake mp4")
+    (render_dir / "bgm.mp3").write_bytes(b"fake bgm")
+    (render_dir / "video.mp4").write_bytes(b"fake video")
+    (render_dir / "subtitle.ass").write_text("subtitle", encoding="utf-8")
+    (render_dir / "description.txt").write_text("description", encoding="utf-8")
+    (render_dir / "credits.txt").write_text("credits", encoding="utf-8")
+    (render_dir / "logs" / "ffmpeg_command.txt").write_text("ffmpeg", encoding="utf-8")
+    (render_dir / "logs" / "ffmpeg_stderr.log").write_text("", encoding="utf-8")
+    _write_constant_wav(render_dir / "audio" / "final_audio.wav")
+    rendered_path = render_dir / "rendered.youtube.json"
+    rendered = _rendered(render_dir)
+    rendered["credits"]["items"] = [
+        {"credit_type": "bgm", "source": "youtube_audio_library", "text": "BGM"},
+        {"credit_type": "video", "source": "pexels", "text": "Video"},
+    ]
+    rendered_path.write_text(json.dumps(rendered, ensure_ascii=False), encoding="utf-8")
+
+    report = evaluate_render(
+        rendered_path,
+        video_probe=lambda _path: {
+            "duration_sec": 3.0,
+            "width": 720,
+            "height": 1280,
+            "fps": 30.0,
+        },
+    )
+
+    assert "VIDEO_DIMENSION_INVALID" in {check["code"] for check in report["checks"]}
+    assert report["status"] == "error"
+    assert report["metrics"]["video_width"] == 720
+    assert report["metrics"]["video_height"] == 1280
+
+
+def test_evaluate_render_reports_video_duration_mismatch(tmp_path: Path) -> None:
+    from src.quality.evaluator import evaluate_render
+
+    render_dir = tmp_path / "render"
+    (render_dir / "logs").mkdir(parents=True)
+    (render_dir / "output.mp4").write_bytes(b"fake mp4")
+    (render_dir / "bgm.mp3").write_bytes(b"fake bgm")
+    (render_dir / "video.mp4").write_bytes(b"fake video")
+    (render_dir / "subtitle.ass").write_text("subtitle", encoding="utf-8")
+    (render_dir / "description.txt").write_text("description", encoding="utf-8")
+    (render_dir / "credits.txt").write_text("credits", encoding="utf-8")
+    (render_dir / "logs" / "ffmpeg_command.txt").write_text("ffmpeg", encoding="utf-8")
+    (render_dir / "logs" / "ffmpeg_stderr.log").write_text("", encoding="utf-8")
+    _write_constant_wav(render_dir / "audio" / "final_audio.wav")
+    rendered_path = render_dir / "rendered.youtube.json"
+    rendered = _rendered(render_dir)
+    rendered["credits"]["items"] = [
+        {"credit_type": "bgm", "source": "youtube_audio_library", "text": "BGM"},
+        {"credit_type": "video", "source": "pexels", "text": "Video"},
+    ]
+    rendered_path.write_text(json.dumps(rendered, ensure_ascii=False), encoding="utf-8")
+
+    report = evaluate_render(
+        rendered_path,
+        video_probe=lambda _path: {
+            "duration_sec": 5.2,
+            "width": 1080,
+            "height": 1920,
+            "fps": 30.0,
+        },
+    )
+
+    assert "VIDEO_DURATION_MISMATCH" in {check["code"] for check in report["checks"]}
+    assert report["status"] == "warning"
+    assert report["metrics"]["rendered_duration_sec"] == 3.0
+    assert report["metrics"]["video_duration_sec"] == 5.2
+    assert report["metrics"]["duration_diff_sec"] == 2.2
+
+
+def test_evaluate_render_reports_shorts_duration_exceeded(tmp_path: Path) -> None:
+    from src.quality.evaluator import evaluate_render
+
+    render_dir = tmp_path / "render"
+    (render_dir / "logs").mkdir(parents=True)
+    (render_dir / "output.mp4").write_bytes(b"fake mp4")
+    (render_dir / "bgm.mp3").write_bytes(b"fake bgm")
+    (render_dir / "video.mp4").write_bytes(b"fake video")
+    (render_dir / "subtitle.ass").write_text("subtitle", encoding="utf-8")
+    (render_dir / "description.txt").write_text("description", encoding="utf-8")
+    (render_dir / "credits.txt").write_text("credits", encoding="utf-8")
+    (render_dir / "logs" / "ffmpeg_command.txt").write_text("ffmpeg", encoding="utf-8")
+    (render_dir / "logs" / "ffmpeg_stderr.log").write_text("", encoding="utf-8")
+    _write_constant_wav(render_dir / "audio" / "final_audio.wav", duration_sec=65.0)
+    rendered_path = render_dir / "rendered.youtube.json"
+    rendered = _rendered(render_dir)
+    rendered["target"]["actual_duration_sec"] = 65.0
+    rendered["audio"]["final_audio_duration_sec"] = 65.0
+    rendered["credits"]["items"] = [
+        {"credit_type": "bgm", "source": "youtube_audio_library", "text": "BGM"},
+        {"credit_type": "video", "source": "pexels", "text": "Video"},
+    ]
+    rendered_path.write_text(json.dumps(rendered, ensure_ascii=False), encoding="utf-8")
+
+    report = evaluate_render(
+        rendered_path,
+        video_probe=lambda _path: {
+            "duration_sec": 65.0,
+            "width": 1080,
+            "height": 1920,
+            "fps": 30.0,
+        },
+    )
+
+    checks = {check["code"]: check for check in report["checks"]}
+    assert "VIDEO_DURATION_TOO_LONG" in checks
+    assert checks["VIDEO_DURATION_TOO_LONG"]["level"] == "warning"
+    assert checks["VIDEO_DURATION_TOO_LONG"]["metrics"] == {
+        "duration_sec": 65.0,
+        "max_duration_sec": 60.0,
+    }
+    assert checks["VIDEO_DURATION_TOO_LONG"]["auto_fixable"] is True
+
+
+def test_evaluate_render_counts_wrapped_subtitle_lines(tmp_path: Path) -> None:
+    from src.quality.evaluator import evaluate_render
+
+    render_dir = tmp_path / "render"
+    (render_dir / "logs").mkdir(parents=True)
+    (render_dir / "output.mp4").write_bytes(b"fake mp4")
+    (render_dir / "bgm.mp3").write_bytes(b"fake bgm")
+    (render_dir / "video.mp4").write_bytes(b"fake video")
+    (render_dir / "subtitle.ass").write_text("subtitle", encoding="utf-8")
+    (render_dir / "description.txt").write_text("description", encoding="utf-8")
+    (render_dir / "credits.txt").write_text("credits", encoding="utf-8")
+    (render_dir / "logs" / "ffmpeg_command.txt").write_text("ffmpeg", encoding="utf-8")
+    (render_dir / "logs" / "ffmpeg_stderr.log").write_text("", encoding="utf-8")
+    rendered_path = render_dir / "rendered.youtube.json"
+    rendered = _rendered(render_dir)
+    rendered["credits"]["items"] = [
+        {"credit_type": "bgm", "source": "youtube_audio_library", "text": "BGM"},
+        {"credit_type": "video", "source": "pexels", "text": "Video"},
+    ]
+    rendered["subtitles"]["items"][0]["text"] = (
+        "たとえばチョウチンアンコウは、\\N頭の先にある光で小さな魚を誘います。"
+    )
+    rendered_path.write_text(json.dumps(rendered, ensure_ascii=False), encoding="utf-8")
+
+    report = evaluate_render(
+        rendered_path,
+        video_probe=lambda _path: {
+            "duration_sec": 3.0,
+            "width": 1080,
+            "height": 1920,
+            "fps": 30.0,
+        },
+    )
+
+    assert "SUBTITLE_TOO_LONG" not in {check["code"] for check in report["checks"]}
+    assert report["metrics"]["max_subtitle_chars"] == 18
+
+
+def test_evaluate_render_reports_subtitle_speed_and_line_count(
+    tmp_path: Path,
+) -> None:
+    from src.quality.evaluator import evaluate_render
+
+    render_dir = tmp_path / "render"
+    (render_dir / "logs").mkdir(parents=True)
+    (render_dir / "output.mp4").write_bytes(b"fake mp4")
+    (render_dir / "bgm.mp3").write_bytes(b"fake bgm")
+    (render_dir / "video.mp4").write_bytes(b"fake video")
+    (render_dir / "subtitle.ass").write_text("subtitle", encoding="utf-8")
+    (render_dir / "description.txt").write_text("description", encoding="utf-8")
+    (render_dir / "credits.txt").write_text("credits", encoding="utf-8")
+    (render_dir / "logs" / "ffmpeg_command.txt").write_text("ffmpeg", encoding="utf-8")
+    (render_dir / "logs" / "ffmpeg_stderr.log").write_text("", encoding="utf-8")
+    _write_constant_wav(render_dir / "audio" / "final_audio.wav")
+    rendered = _rendered(render_dir)
+    rendered["credits"]["items"] = [
+        {"credit_type": "bgm", "source": "youtube_audio_library", "text": "BGM"},
+        {"credit_type": "video", "source": "pexels", "text": "Video"},
+    ]
+    rendered["subtitles"]["items"][0]["text"] = "ABCDEFGHIJ\\NKLMNOPQRST\\NUVWXYZABCD"
+    rendered["subtitles"]["items"][0]["start_sec"] = 0.0
+    rendered["subtitles"]["items"][0]["end_sec"] = 1.0
+    rendered_path = render_dir / "rendered.youtube.json"
+    rendered_path.write_text(json.dumps(rendered, ensure_ascii=False), encoding="utf-8")
+
+    report = evaluate_render(
+        rendered_path,
+        video_probe=lambda _path: {
+            "duration_sec": 3.0,
+            "width": 1080,
+            "height": 1920,
+            "fps": 30.0,
+        },
+    )
+
+    checks = {check["code"]: check for check in report["checks"]}
+    assert "SUBTITLE_CPS_TOO_HIGH" in checks
+    assert checks["SUBTITLE_CPS_TOO_HIGH"]["auto_fixable"] is True
+    assert checks["SUBTITLE_CPS_TOO_HIGH"]["metrics"]["chars_per_sec"] == 30.0
+    assert "SUBTITLE_TOO_MANY_LINES" in checks
+    assert report["metrics"]["max_subtitle_cps"] == 30.0
+    assert report["metrics"]["max_subtitle_lines"] == 3
+
+
+def test_evaluate_render_reports_audio_integrity_issues(tmp_path: Path) -> None:
+    from src.quality.evaluator import evaluate_render
+
+    render_dir = tmp_path / "render"
+    (render_dir / "logs").mkdir(parents=True)
+    (render_dir / "output.mp4").write_bytes(b"fake mp4")
+    (render_dir / "bgm.mp3").write_bytes(b"fake bgm")
+    (render_dir / "video.mp4").write_bytes(b"fake video")
+    (render_dir / "subtitle.ass").write_text("subtitle", encoding="utf-8")
+    (render_dir / "description.txt").write_text("description", encoding="utf-8")
+    (render_dir / "credits.txt").write_text("credits", encoding="utf-8")
+    (render_dir / "logs" / "ffmpeg_command.txt").write_text("ffmpeg", encoding="utf-8")
+    (render_dir / "logs" / "ffmpeg_stderr.log").write_text("", encoding="utf-8")
+    final_samples = [0] * 24000 + [32767] * 21000
+    _write_wav(render_dir / "audio" / "final_audio.wav", final_samples)
+    _write_constant_wav(
+        render_dir / "audio" / "001.wav", duration_sec=1.0, sample_rate=22050
+    )
+    rendered = _rendered(render_dir)
+    rendered["credits"]["items"] = [
+        {"credit_type": "bgm", "source": "youtube_audio_library", "text": "BGM"},
+        {"credit_type": "video", "source": "pexels", "text": "Video"},
+    ]
+    rendered["audio"]["final_audio_duration_sec"] = 1.0
+    rendered["audio"]["narration_files"] = [
+        {
+            "index": 1,
+            "text": "sample",
+            "path": str(render_dir / "audio" / "001.wav"),
+            "estimated_duration_sec": 1.0,
+            "actual_duration_sec": 1.0,
+            "start_sec": 0.0,
+            "end_sec": 1.0,
+        }
+    ]
+    rendered_path = render_dir / "rendered.youtube.json"
+    rendered_path.write_text(json.dumps(rendered, ensure_ascii=False), encoding="utf-8")
+
+    report = evaluate_render(
+        rendered_path,
+        video_probe=lambda _path: {
+            "duration_sec": 3.0,
+            "width": 1080,
+            "height": 1920,
+            "fps": 30.0,
+        },
+    )
+
+    codes = {check["code"] for check in report["checks"]}
+    assert "OPENING_NO_AUDIO" in codes
+    assert "AUDIO_CLIPPING" in codes
+    assert "FINAL_AUDIO_DURATION_MISMATCH" in codes
+    assert "AUDIO_SAMPLE_RATE_MISMATCH" in codes
+    assert report["metrics"]["final_audio_sample_rate"] == 44100
+    assert report["metrics"]["final_audio_peak_dbfs"] == 0.0
+
+
+def test_evaluate_render_reports_ffmpeg_and_visual_metadata_issues(
+    tmp_path: Path,
+) -> None:
+    from src.quality.evaluator import evaluate_render
+
+    render_dir = tmp_path / "render"
+    (render_dir / "logs").mkdir(parents=True)
+    (render_dir / "output.mp4").write_bytes(b"fake mp4")
+    (render_dir / "bgm.mp3").write_bytes(b"fake bgm")
+    (render_dir / "video.mp4").write_bytes(b"fake video")
+    (render_dir / "subtitle.ass").write_text("subtitle", encoding="utf-8")
+    (render_dir / "description.txt").write_text("description", encoding="utf-8")
+    (render_dir / "credits.txt").write_text("credits", encoding="utf-8")
+    (render_dir / "logs" / "ffmpeg_command.txt").write_text("ffmpeg", encoding="utf-8")
+    (render_dir / "logs" / "ffmpeg_stderr.log").write_text(
+        "deprecated pixel format used\n"
+        "fontselect: (Noto Sans CJK JP, 400, 0) -> ArialMT, 0, ArialMT\n",
+        encoding="utf-8",
+    )
+    _write_constant_wav(render_dir / "audio" / "final_audio.wav")
+    rendered = _rendered(render_dir)
+    rendered["credits"]["items"] = [
+        {"credit_type": "bgm", "source": "youtube_audio_library", "text": "BGM"},
+        {"credit_type": "video", "source": "pexels", "text": "Video"},
+    ]
+    rendered["visuals"][0]["original_width"] = 640
+    rendered["visuals"][0]["original_height"] = 360
+    rendered["visuals"].append({**rendered["visuals"][0], "index": 2})
+    rendered_path = render_dir / "rendered.youtube.json"
+    rendered_path.write_text(json.dumps(rendered, ensure_ascii=False), encoding="utf-8")
+
+    report = evaluate_render(
+        rendered_path,
+        video_probe=lambda _path: {
+            "duration_sec": 3.0,
+            "width": 1080,
+            "height": 1920,
+            "fps": 30.0,
+        },
+    )
+
+    codes = {check["code"] for check in report["checks"]}
+    assert "FFMPEG_WARNING_DETECTED" in codes
+    assert "FONT_FALLBACK_DETECTED" in codes
+    assert "SOURCE_RESOLUTION_TOO_LOW" in codes
+    assert "SAME_ASSET_CONSECUTIVE" in codes
 
 
 def test_evaluate_render_cli_prints_report_path(

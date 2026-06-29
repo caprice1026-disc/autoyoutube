@@ -1,0 +1,212 @@
+{
+  "schema_version": "youtube-1.0.0",
+  "platform_profile": "youtube_shorts",
+  "id": "trivia_clouds_not_falling_001",
+  "topic": "雲はなぜ落ちてこないのか",
+  "title": "雲はなぜ落ちてこないのか",
+  "hook": "重いはずの雲が空に浮かんで見える理由を短く紹介します。",
+  "target": {
+    "duration_sec": 60,
+    "aspect_ratio": "9:16",
+    "resolution": {
+      "width": 1080,
+      "height": 1920
+    },
+    "fps": 30,
+    "video_format": {
+      "container": "mp4",
+      "video_codec": "libx264",
+      "audio_codec": "aac",
+      "pix_fmt": "yuv420p"
+    }
+  },
+  "voice": {
+    "engine": "aivis_speech",
+    "speaker": "まお",
+    "style_id": 888753760,
+    "speed_scale": 1.22,
+    "pitch_scale": 0.0,
+    "intonation_scale": 1.0,
+    "sentence_gap_ms": 180
+  },
+  "bgm": {
+    "enabled": true,
+    "strategy": "youtube_safe_bgm",
+    "mood": "mysterious",
+    "intensity": "low",
+    "volume_db": -26,
+    "fade_in_ms": 500,
+    "fade_out_ms": 1200,
+    "allow_sources": [
+      "youtube_audio_library"
+    ],
+    "avoid": [
+      "vocal",
+      "too_loud",
+      "copyright_risky"
+    ]
+  },
+  "visual_strategy": {
+    "source_priority": [
+      "pexels",
+      "local"
+    ],
+    "preferred_orientation": "portrait",
+    "fallback": "crop_landscape_to_9_16",
+    "primary_query": "clouds sky",
+    "fallback_queries": [
+      "large white clouds",
+      "blue sky clouds",
+      "rain falling",
+      "sky clouds sunset"
+    ],
+    "avoid_keywords": [
+      "cartoon",
+      "illustration",
+      "toy"
+    ]
+  },
+  "script": [
+    {
+      "index": 1,
+      "text": "空に浮かぶ雲は、実はとても重い存在です。",
+      "visual_query": "clouds sky",
+      "estimated_duration_sec": 3.8,
+      "caption_style_hint": "normal"
+    },
+    {
+      "index": 2,
+      "text": "小さな雲でも、水の重さは何十トンにもなることがあります。",
+      "visual_query": "large white clouds",
+      "estimated_duration_sec": 4.8,
+      "caption_style_hint": "emphasis"
+    },
+    {
+      "index": 3,
+      "text": "ではなぜ、雲はそのまま地上に落ちてこないのでしょうか。",
+      "visual_query": "blue sky clouds",
+      "estimated_duration_sec": 4.5,
+      "caption_style_hint": "question"
+    },
+    {
+      "index": 4,
+      "text": "理由のひとつは、雲の中の水がとても小さいからです。",
+      "visual_query": "water droplets macro",
+      "estimated_duration_sec": 4.5,
+      "caption_style_hint": "normal"
+    },
+    {
+      "index": 5,
+      "text": "雲は、大きな水のかたまりではありません。",
+      "visual_query": "mist fog close up",
+      "estimated_duration_sec": 3.2,
+      "caption_style_hint": "normal"
+    },
+    {
+      "index": 6,
+      "text": "目に見えないほど小さな水滴や氷の粒が、たくさん集まったものです。",
+      "visual_query": "tiny water droplets",
+      "estimated_duration_sec": 5.5,
+      "caption_style_hint": "emphasis"
+    },
+    {
+      "index": 7,
+      "text": "その粒は軽く、空気の流れに支えられています。",
+      "visual_query": "wind clouds moving",
+      "estimated_duration_sec": 4.0,
+      "caption_style_hint": "normal"
+    },
+    {
+      "index": 8,
+      "text": "下に落ちようとしても、上向きの空気の動きが押し返します。",
+      "visual_query": "rising air clouds",
+      "estimated_duration_sec": 4.8,
+      "caption_style_hint": "normal"
+    },
+    {
+      "index": 9,
+      "text": "でも、水滴が集まって大きくなると話は変わります。",
+      "visual_query": "dark rain clouds",
+      "estimated_duration_sec": 4.2,
+      "caption_style_hint": "emphasis"
+    },
+    {
+      "index": 10,
+      "text": "空気では支えきれなくなり、地上へ落ちてきます。",
+      "visual_query": "rain falling",
+      "estimated_duration_sec": 3.8,
+      "caption_style_hint": "normal"
+    },
+    {
+      "index": 11,
+      "text": "それが、雨です。",
+      "visual_query": "rain drops",
+      "estimated_duration_sec": 1.5,
+      "caption_style_hint": "punchline"
+    },
+    {
+      "index": 12,
+      "text": "つまり雲は、落ちないのではなく、まだ雨になる準備中なのです。",
+      "visual_query": "clouds before rain",
+      "estimated_duration_sec": 5.0,
+      "caption_style_hint": "emphasis"
+    },
+    {
+      "index": 13,
+      "text": "白くふわふわ見える雲も、中では小さな水の粒が旅をしています。",
+      "visual_query": "white clouds sunlight",
+      "estimated_duration_sec": 5.2,
+      "caption_style_hint": "normal"
+    },
+    {
+      "index": 14,
+      "text": "空を見上げたとき、その雲は未来の雨かもしれません。",
+      "visual_query": "sky clouds sunset",
+      "estimated_duration_sec": 4.5,
+      "caption_style_hint": "normal"
+    },
+    {
+      "index": 15,
+      "text": "雲は、空に浮かぶ水の待合室なのです。",
+      "visual_query": "peaceful clouds sky",
+      "estimated_duration_sec": 4.0,
+      "caption_style_hint": "punchline"
+    }
+  ],
+  "youtube": {
+    "title": "雲はなぜ落ちてこないのか #Shorts",
+    "description": "重いはずの雲が、なぜ空に浮かんで見えるのかを短く紹介します。",
+    "hashtags": [
+      "#雑学",
+      "#雲",
+      "#Shorts"
+    ],
+    "tags": [
+      "雑学",
+      "雲",
+      "天気",
+      "雨"
+    ],
+    "category_hint": "education",
+    "privacy_status": "private",
+    "made_for_kids": false,
+    "contains_synthetic_voice": true,
+    "description_sections": {
+      "summary": "雲を作る小さな水滴と空気の流れについての雑学です。",
+      "credits_policy": "include_pexels_and_bgm_credits",
+      "disclaimer": "投稿前に気象表現とファクトチェックを確認してください。"
+    },
+    "analytics_hypothesis": {
+      "experiment_group": "clouds_not_falling_mysterious_low",
+      "hypothesis": "身近な疑問から雨への展開で視聴維持しやすい。",
+      "primary_metric": "average_view_percentage",
+      "secondary_metrics": [
+        "views",
+        "likes"
+      ]
+    }
+  },
+  "manual_fact_check_required": true,
+  "fact_check_notes": "雲の水滴や氷晶、上昇気流、雨になる説明が一般向けに妥当か確認する。",
+  "production_notes": "3本品質チェック用の雲テーマ台本。"
+}

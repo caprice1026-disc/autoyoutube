@@ -72,6 +72,8 @@ def build_ffmpeg_command(request: FfmpegRenderRequest, ffmpeg_path: Path) -> lis
                 "-filter_complex",
                 _bgm_filter(request),
                 "-shortest",
+                "-t",
+                f"{request.duration_sec:.3f}",
                 "-c:v",
                 request.video_codec,
                 "-pix_fmt",
@@ -90,6 +92,8 @@ def build_ffmpeg_command(request: FfmpegRenderRequest, ffmpeg_path: Path) -> lis
         command.extend(
             [
                 "-shortest",
+                "-t",
+                f"{request.duration_sec:.3f}",
                 "-c:v",
                 request.video_codec,
                 "-pix_fmt",

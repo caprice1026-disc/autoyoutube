@@ -369,3 +369,139 @@ def test_render_project_selects_local_media_and_passes_visuals_to_video_renderer
     assert first_visual["local_file_path"] == str(media_path)
     assert first_visual["source"] == "local"
     assert renderer.calls[0]["visuals"][0]["asset_id"] == "ocean_portrait"
+
+
+def test_render_project_avoids_consecutive_same_media_asset_when_possible(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project = _project()
+    project["script"][0]["visual_query"] = "ocean"
+    project["script"][1]["visual_query"] = "ocean"
+    project["script"][2]["visual_query"] = "ocean"
+    project_path = tmp_path / "project.youtube.json"
+    project_path.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+    first_path = tmp_path / "ocean_a.mp4"
+    second_path = tmp_path / "ocean_b.mp4"
+    first_path.write_bytes(b"fake mp4")
+    second_path.write_bytes(b"fake mp4")
+    first_asset = MediaAsset(
+        asset_id="ocean_a",
+        source="local",
+        local_file_path=first_path,
+        original_width=1080,
+        original_height=1920,
+        original_duration_sec=8.0,
+        orientation="portrait",
+        selected_quality="hd",
+        query="ocean",
+        tags=["ocean"],
+        used_count=0,
+        is_active=True,
+    )
+    second_asset = MediaAsset(
+        asset_id="ocean_b",
+        source="local",
+        local_file_path=second_path,
+        original_width=1080,
+        original_height=1920,
+        original_duration_sec=8.0,
+        orientation="portrait",
+        selected_quality="hd",
+        query="ocean",
+        tags=["ocean"],
+        used_count=0,
+        is_active=True,
+    )
+    monkeypatch.setattr(render_module, "RENDERS_DIR", tmp_path / "renders")
+    monkeypatch.setattr(render_module, "init_db", lambda: None)
+    monkeypatch.setattr(render_module, "connect", lambda: NullConnection())
+    monkeypatch.setattr(render_module, "list_active_bgm_tracks", lambda connection: [])
+    monkeypatch.setattr(
+        render_module,
+        "list_active_media_assets",
+        lambda connection: [first_asset, second_asset],
+    )
+    monkeypatch.setattr(render_module, "upsert_project", lambda *args: None)
+    monkeypatch.setattr(render_module, "insert_render_summary", lambda *args: None)
+    renderer = FakeVideoRenderer()
+
+    rendered_path = render_project(project_path, video_renderer=renderer)
+
+    rendered = json.loads(rendered_path.read_text(encoding="utf-8"))
+    asset_ids = [visual["asset_id"] for visual in rendered["visuals"]]
+    assert asset_ids == ["ocean_a", "ocean_b", "ocean_a"]
+
+
+def test_render_project_reuses_available_media_when_query_has_no_match(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project = _project()
+    project["script"][0]["visual_query"] = "ocean"
+    project["script"][1]["visual_query"] = "seismic graph"
+    project["script"][2]["visual_query"] = "submarine"
+    project_path = tmp_path / "project.youtube.json"
+    project_path.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+    media_path = tmp_path / "ocean.mp4"
+    media_path.write_bytes(b"fake mp4")
+    asset = MediaAsset(
+        asset_id="ocean_portrait",
+        source="local",
+        local_file_path=media_path,
+        original_width=1080,
+        original_height=1920,
+        original_duration_sec=8.0,
+        orientation="portrait",
+        selected_quality="hd",
+        query="ocean",
+        tags=["ocean"],
+        used_count=0,
+        is_active=True,
+    )
+    monkeypatch.setattr(render_module, "RENDERS_DIR", tmp_path / "renders")
+    monkeypatch.setattr(render_module, "init_db", lambda: None)
+    monkeypatch.setattr(render_module, "connect", lambda: NullConnection())
+    monkeypatch.setattr(render_module, "list_active_bgm_tracks", lambda connection: [])
+    monkeypatch.setattr(
+        render_module, "list_active_media_assets", lambda connection: [asset]
+    )
+    monkeypatch.setattr(render_module, "upsert_project", lambda *args: None)
+    monkeypatch.setattr(render_module, "insert_render_summary", lambda *args: None)
+    renderer = FakeVideoRenderer()
+
+    rendered_path = render_project(project_path, video_renderer=renderer)
+
+    rendered = json.loads(rendered_path.read_text(encoding="utf-8"))
+    fallback_visual = rendered["visuals"][1]
+    assert fallback_visual["visual_query"] == "seismic graph"
+    assert fallback_visual["asset_id"] == "ocean_portrait"
+    assert fallback_visual["local_file_path"] == str(media_path)
+    assert all(
+        Path(visual["local_file_path"]).is_file() for visual in rendered["visuals"]
+    )
+    assert renderer.calls[0]["visuals"][1]["asset_id"] == "ocean_portrait"
+
+
+def test_render_project_wraps_long_subtitle_lines(tmp_path: Path, monkeypatch) -> None:
+    project = _project()
+    original_text = "たとえばチョウチンアンコウは、頭の先にある光で小さな魚を誘います。"
+    project["script"][0]["text"] = original_text
+    project_path = tmp_path / "project.youtube.json"
+    project_path.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(render_module, "RENDERS_DIR", tmp_path / "renders")
+    monkeypatch.setattr(render_module, "init_db", lambda: None)
+    monkeypatch.setattr(render_module, "connect", lambda: NullConnection())
+    monkeypatch.setattr(render_module, "list_active_bgm_tracks", lambda connection: [])
+    monkeypatch.setattr(
+        render_module, "list_active_media_assets", lambda connection: []
+    )
+    monkeypatch.setattr(render_module, "upsert_project", lambda *args: None)
+    monkeypatch.setattr(render_module, "insert_render_summary", lambda *args: None)
+    renderer = FakeVideoRenderer()
+
+    rendered_path = render_project(project_path, video_renderer=renderer)
+
+    rendered = json.loads(rendered_path.read_text(encoding="utf-8"))
+    assert rendered["audio"]["narration_files"][0]["text"] == original_text
+    assert "\\N" in rendered["subtitles"]["items"][0]["text"]
+    subtitle_ass = (rendered_path.parent / "subtitle.ass").read_text(encoding="utf-8")
+    assert "\\N" in subtitle_ass

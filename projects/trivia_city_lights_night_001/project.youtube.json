@@ -1,0 +1,205 @@
+{
+  "schema_version": "youtube-1.0.0",
+  "platform_profile": "youtube_shorts",
+  "id": "trivia_city_lights_night_001",
+  "topic": "夜の街が明るく見える理由",
+  "title": "夜の街が明るく見える理由",
+  "hook": "夜の街が明るく感じるのは、電気の数だけが理由ではありません。",
+  "target": {
+    "duration_sec": 60,
+    "aspect_ratio": "9:16",
+    "resolution": {
+      "width": 1080,
+      "height": 1920
+    },
+    "fps": 30,
+    "video_format": {
+      "container": "mp4",
+      "video_codec": "libx264",
+      "audio_codec": "aac",
+      "pix_fmt": "yuv420p"
+    }
+  },
+  "voice": {
+    "engine": "aivis_speech",
+    "speaker": "まお",
+    "style_id": 888753760,
+    "speed_scale": 1.22,
+    "pitch_scale": 0.0,
+    "intonation_scale": 1.0,
+    "sentence_gap_ms": 180
+  },
+  "bgm": {
+    "enabled": true,
+    "strategy": "youtube_safe_bgm",
+    "mood": "mysterious",
+    "intensity": "low",
+    "volume_db": -26,
+    "fade_in_ms": 500,
+    "fade_out_ms": 1200,
+    "allow_sources": [
+      "youtube_audio_library"
+    ],
+    "avoid": [
+      "vocal",
+      "too_loud",
+      "copyright_risky"
+    ]
+  },
+  "visual_strategy": {
+    "source_priority": [
+      "pexels",
+      "local"
+    ],
+    "preferred_orientation": "portrait",
+    "fallback": "crop_landscape_to_9_16",
+    "primary_query": "city night lights",
+    "fallback_queries": [
+      "neon city street",
+      "rainy city night",
+      "urban night skyline",
+      "city skyline night lights"
+    ],
+    "avoid_keywords": [
+      "cartoon",
+      "illustration",
+      "toy"
+    ]
+  },
+  "script": [
+    {
+      "index": 1,
+      "text": "夜の街は、空が暗いほど明るく見えます。",
+      "visual_query": "city night lights",
+      "estimated_duration_sec": 3.5,
+      "caption_style_hint": "normal"
+    },
+    {
+      "index": 2,
+      "text": "その理由は、ただ電気が多いからだけではありません。",
+      "visual_query": "neon city street",
+      "estimated_duration_sec": 4.0,
+      "caption_style_hint": "question"
+    },
+    {
+      "index": 3,
+      "text": "人間の目は、暗い場所では光に敏感になります。",
+      "visual_query": "human eye close up",
+      "estimated_duration_sec": 4.0,
+      "caption_style_hint": "normal"
+    },
+    {
+      "index": 4,
+      "text": "小さな看板の光でも、昼よりずっと強く感じます。",
+      "visual_query": "neon sign night",
+      "estimated_duration_sec": 4.2,
+      "caption_style_hint": "normal"
+    },
+    {
+      "index": 5,
+      "text": "さらに、街の光は道路や窓に反射します。",
+      "visual_query": "wet street reflections",
+      "estimated_duration_sec": 4.0,
+      "caption_style_hint": "normal"
+    },
+    {
+      "index": 6,
+      "text": "雨の日の夜道がきらきら見えるのは、この反射が増えるからです。",
+      "visual_query": "rainy city night",
+      "estimated_duration_sec": 5.2,
+      "caption_style_hint": "emphasis"
+    },
+    {
+      "index": 7,
+      "text": "光はまっすぐ進むだけでなく、いろいろな方向にはね返ります。",
+      "visual_query": "light reflection glass",
+      "estimated_duration_sec": 4.5,
+      "caption_style_hint": "normal"
+    },
+    {
+      "index": 8,
+      "text": "だから実際の電灯の数より、街全体が明るく感じられます。",
+      "visual_query": "urban night skyline",
+      "estimated_duration_sec": 5.0,
+      "caption_style_hint": "normal"
+    },
+    {
+      "index": 9,
+      "text": "でも、明るすぎる夜には問題もあります。",
+      "visual_query": "bright city night",
+      "estimated_duration_sec": 3.2,
+      "caption_style_hint": "question"
+    },
+    {
+      "index": 10,
+      "text": "星が見えにくくなる、光害という現象です。",
+      "visual_query": "light pollution sky",
+      "estimated_duration_sec": 4.0,
+      "caption_style_hint": "emphasis"
+    },
+    {
+      "index": 11,
+      "text": "本来なら見えるはずの星の光が、街の明かりに埋もれてしまいます。",
+      "visual_query": "stars over city",
+      "estimated_duration_sec": 5.2,
+      "caption_style_hint": "normal"
+    },
+    {
+      "index": 12,
+      "text": "つまり夜景の美しさは、便利さと引き換えに生まれている面もあります。",
+      "visual_query": "city lights aerial night",
+      "estimated_duration_sec": 5.5,
+      "caption_style_hint": "normal"
+    },
+    {
+      "index": 13,
+      "text": "私たちが見ている夜の街は、電気と反射と目の働きが作る景色です。",
+      "visual_query": "night city timelapse",
+      "estimated_duration_sec": 5.8,
+      "caption_style_hint": "emphasis"
+    },
+    {
+      "index": 14,
+      "text": "暗闇の中で光る街は、人間が作ったもうひとつの星空なのです。",
+      "visual_query": "city skyline night lights",
+      "estimated_duration_sec": 5.2,
+      "caption_style_hint": "punchline"
+    }
+  ],
+  "youtube": {
+    "title": "夜の街が明るく見える理由 #Shorts",
+    "description": "夜の街が明るく感じる理由を、目の働きと光の反射から短く紹介します。",
+    "hashtags": [
+      "#雑学",
+      "#夜景",
+      "#Shorts"
+    ],
+    "tags": [
+      "雑学",
+      "夜景",
+      "光",
+      "光害"
+    ],
+    "category_hint": "education",
+    "privacy_status": "private",
+    "made_for_kids": false,
+    "contains_synthetic_voice": true,
+    "description_sections": {
+      "summary": "夜景が明るく見える理由を、暗順応、反射、光害の観点で説明します。",
+      "credits_policy": "include_pexels_and_bgm_credits",
+      "disclaimer": "投稿前に目の働きと光害に関する表現を確認してください。"
+    },
+    "analytics_hypothesis": {
+      "experiment_group": "city_lights_night_mysterious_low",
+      "hypothesis": "夜景の美しさから光害へ展開すると、身近さと意外性で視聴維持しやすい。",
+      "primary_metric": "average_view_percentage",
+      "secondary_metrics": [
+        "views",
+        "likes"
+      ]
+    }
+  },
+  "manual_fact_check_required": true,
+  "fact_check_notes": "暗順応、反射、光害の説明が一般向けに妥当か確認する。",
+  "production_notes": "3本品質チェック用の夜の街テーマ台本。"
+}

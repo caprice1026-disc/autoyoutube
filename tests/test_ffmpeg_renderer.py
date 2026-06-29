@@ -30,7 +30,9 @@ def test_build_ffmpeg_command_uses_vertical_canvas_audio_subtitles_and_mp4(
     assert "color=c=0x07111f:s=1080x1920:r=30:d=4.900" in command
     assert "audio/final_audio.wav" in command
     assert "subtitles=subtitle.ass" in command
-    assert command[-9:] == [
+    assert command[-11:] == [
+        "-t",
+        "4.900",
         "-c:v",
         "libx264",
         "-pix_fmt",
@@ -74,8 +76,10 @@ def test_build_ffmpeg_command_can_mix_bgm(tmp_path: Path) -> None:
     assert "afade=t=in:st=0:d=0.500" in filter_complex
     assert "afade=t=out:st=8.800:d=1.200" in filter_complex
     assert "amix=inputs=2:duration=first" in filter_complex
-    assert command[-14:] == [
+    assert command[-16:] == [
         "-shortest",
+        "-t",
+        "10.000",
         "-c:v",
         "libx264",
         "-pix_fmt",
