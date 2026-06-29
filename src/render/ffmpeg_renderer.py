@@ -6,6 +6,11 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from src.defaults import (
+    DEFAULT_BGM_FADE_IN_MS,
+    DEFAULT_BGM_FADE_OUT_MS,
+    DEFAULT_BGM_VOLUME_DB,
+)
 from src.errors import AppError
 
 
@@ -25,9 +30,9 @@ class FfmpegRenderRequest:
     pix_fmt: str
     background_video_path: Path | None = None
     bgm_path: Path | None = None
-    bgm_volume_db: float = -26
-    bgm_fade_in_sec: float = 0.5
-    bgm_fade_out_sec: float = 1.2
+    bgm_volume_db: float = DEFAULT_BGM_VOLUME_DB
+    bgm_fade_in_sec: float = DEFAULT_BGM_FADE_IN_MS / 1000
+    bgm_fade_out_sec: float = DEFAULT_BGM_FADE_OUT_MS / 1000
 
 
 def build_ffmpeg_command(request: FfmpegRenderRequest, ffmpeg_path: Path) -> list[str]:
@@ -159,9 +164,13 @@ class FfmpegVideoRenderer:
             pix_fmt=video_format["pix_fmt"],
             background_video_path=_visual_background_path(visuals),
             bgm_path=Path(bgm["file_path"]) if bgm else None,
-            bgm_volume_db=float(bgm["volume_db"]) if bgm else -26,
-            bgm_fade_in_sec=float(bgm["fade_in_ms"]) / 1000 if bgm else 0.5,
-            bgm_fade_out_sec=float(bgm["fade_out_ms"]) / 1000 if bgm else 1.2,
+            bgm_volume_db=float(bgm["volume_db"]) if bgm else DEFAULT_BGM_VOLUME_DB,
+            bgm_fade_in_sec=float(bgm["fade_in_ms"]) / 1000
+            if bgm
+            else DEFAULT_BGM_FADE_IN_MS / 1000,
+            bgm_fade_out_sec=float(bgm["fade_out_ms"]) / 1000
+            if bgm
+            else DEFAULT_BGM_FADE_OUT_MS / 1000,
         )
         logs_dir.mkdir(parents=True, exist_ok=True)
         command = build_ffmpeg_command(request, self.ffmpeg_path)

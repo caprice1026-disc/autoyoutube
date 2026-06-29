@@ -10,6 +10,22 @@ from typing import Any, Protocol
 from src.bgm.library import BgmTrack
 from src.bgm.selector import select_bgm_track
 from src.config import PROJECT_SCHEMA_PATH, RENDERED_SCHEMA_PATH, RENDERS_DIR
+from src.defaults import (
+    DEFAULT_AUDIO_CODEC,
+    DEFAULT_CRF,
+    DEFAULT_PIX_FMT,
+    DEFAULT_PRESET,
+    DEFAULT_SUBTITLE_ALIGNMENT,
+    DEFAULT_SUBTITLE_FONT_NAME,
+    DEFAULT_SUBTITLE_FONT_SIZE,
+    DEFAULT_SUBTITLE_MARGIN_V,
+    DEFAULT_SUBTITLE_OUTLINE,
+    DEFAULT_SUBTITLE_OUTLINE_COLOR,
+    DEFAULT_SUBTITLE_PRIMARY_COLOR,
+    DEFAULT_SUBTITLE_SHADOW,
+    TARGET_HEIGHT,
+    TARGET_WIDTH,
+)
 from src.db.database import connect, init_db
 from src.db.repositories import (
     insert_render_summary,
@@ -91,7 +107,7 @@ def render_project(
     now = datetime.now(timezone.utc)
     render_id = f"render_{now.strftime('%Y%m%d_%H%M%S')}"
     description = _build_description(project)
-    credits_required, credits_items, credits = _build_credits(selected_bgm)
+    credits_required, credits_items, credits = _build_credits(selected_bgm, visuals)
     subtitle = _build_subtitle(subtitle_items)
     (render_dir / "description.txt").write_text(description, encoding="utf-8")
     (render_dir / "credits.txt").write_text(credits, encoding="utf-8")
@@ -341,14 +357,14 @@ def _build_rendered(
         "subtitles": {
             "format": "ass",
             "style": {
-                "font_name": "Noto Sans CJK JP",
-                "font_size": 72,
-                "primary_color": "FFFFFF",
-                "outline_color": "000000",
-                "outline": 5,
-                "shadow": 1,
-                "alignment": "bottom_center",
-                "margin_v": 220,
+                "font_name": DEFAULT_SUBTITLE_FONT_NAME,
+                "font_size": DEFAULT_SUBTITLE_FONT_SIZE,
+                "primary_color": DEFAULT_SUBTITLE_PRIMARY_COLOR,
+                "outline_color": DEFAULT_SUBTITLE_OUTLINE_COLOR,
+                "outline": DEFAULT_SUBTITLE_OUTLINE,
+                "shadow": DEFAULT_SUBTITLE_SHADOW,
+                "alignment": DEFAULT_SUBTITLE_ALIGNMENT,
+                "margin_v": DEFAULT_SUBTITLE_MARGIN_V,
             },
             "items": subtitle_items,
         },
@@ -369,10 +385,10 @@ def _build_rendered(
             "command_log_path": _rel(Path(video_result["command_log_path"])),
             "stderr_log_path": _rel(Path(video_result["stderr_log_path"])),
             "video_codec": project["target"]["video_format"]["video_codec"],
-            "audio_codec": "aac",
-            "pix_fmt": "yuv420p",
-            "preset": "medium",
-            "crf": 20,
+            "audio_codec": DEFAULT_AUDIO_CODEC,
+            "pix_fmt": DEFAULT_PIX_FMT,
+            "preset": DEFAULT_PRESET,
+            "crf": DEFAULT_CRF,
         },
         "validation": {
             "project_json_valid": True,
@@ -531,28 +547,62 @@ def _build_bgm_render(
     }
 
 
-def _build_credits(track: BgmTrack | None) -> tuple[bool, list[dict[str, Any]], str]:
-    if track is None:
+def _build_credits(
+    track: BgmTrack | None, visuals: list[dict[str, Any]]
+) -> tuple[bool, list[dict[str, Any]], str]:
+    items: list[dict[str, Any]] = []
+    lines: list[str] = []
+    required = False
+    if track is not None:
+        text = track.attribution_text or f"BGM: {track.title} by {track.artist}".strip()
+        items.append(
+            {"credit_type": "bgm", "source": track.source, "text": text, "url": None}
+        )
+        lines.append(text)
+        required = track.attribution_required
+
+    seen_pexels_urls: set[str] = set()
+    for visual in visuals:
+        if visual.get("source") != "pexels":
+            continue
+        pexels_url = str(visual.get("pexels_url") or "").strip()
+        if not pexels_url or pexels_url in seen_pexels_urls:
+            continue
+        seen_pexels_urls.add(pexels_url)
+        photographer = str(visual.get("photographer") or "Pexels creator").strip()
+        text = f"Video by {photographer} on Pexels"
+        items.append(
+            {
+                "credit_type": "video",
+                "source": "pexels",
+                "text": text,
+                "url": pexels_url,
+            }
+        )
+        lines.extend([f"Video: {text}", pexels_url])
+
+    if not items:
         return (
             False,
             [],
             "Dry-run render: external visual media and BGM were not used.\n",
         )
-    text = track.attribution_text or f"BGM: {track.title} by {track.artist}".strip()
-    item = {"credit_type": "bgm", "source": track.source, "text": text, "url": None}
-    return track.attribution_required, [item], text + "\n"
+    return required or bool(seen_pexels_urls), items, "\n".join(lines) + "\n"
 
 
 def _build_subtitle(subtitle_items: list[dict[str, Any]]) -> str:
     lines = [
         "[Script Info]",
         "ScriptType: v4.00+",
-        "PlayResX: 1080",
-        "PlayResY: 1920",
+        f"PlayResX: {TARGET_WIDTH}",
+        f"PlayResY: {TARGET_HEIGHT}",
         "",
         "[V4+ Styles]",
         "Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-        "Style: Default,Noto Sans CJK JP,72,&H00FFFFFF,&H00000000,1,5,1,2,80,80,220,1",
+        f"Style: Default,{DEFAULT_SUBTITLE_FONT_NAME},{DEFAULT_SUBTITLE_FONT_SIZE},"
+        "&H00FFFFFF,&H00000000,1,"
+        f"{DEFAULT_SUBTITLE_OUTLINE},{DEFAULT_SUBTITLE_SHADOW},2,80,80,"
+        f"{DEFAULT_SUBTITLE_MARGIN_V},1",
         "",
         "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",

@@ -24,10 +24,10 @@ def upsert_project(
             project_json_path, project_json_hash, raw_project_json,
             planned_duration_sec, aspect_ratio, width, height, fps, container,
             video_codec, audio_codec, pix_fmt, voice_engine, voice_speaker,
-            voice_speed_scale, voice_pitch_scale, voice_intonation_scale,
+            voice_style_id, voice_speed_scale, voice_pitch_scale, voice_intonation_scale,
             voice_sentence_gap_ms, manual_fact_check_required, fact_check_notes,
             production_notes, status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'validated')
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'validated')
         """,
         (
             project["id"],
@@ -50,6 +50,7 @@ def upsert_project(
             vf["pix_fmt"],
             voice["engine"],
             voice["speaker"],
+            voice.get("style_id"),
             voice["speed_scale"],
             voice["pitch_scale"],
             voice["intonation_scale"],
@@ -168,6 +169,27 @@ def insert_render_summary(
         ),
     )
     mr = rendered["manual_review"]
+    voice = rendered["voice"]
+    connection.execute(
+        """
+        INSERT INTO render_voice_settings (
+            render_id, engine, speaker, voice_style_id, speed_scale, pitch_scale,
+            intonation_scale, sentence_gap_ms, sample_rate, audio_format
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            rendered["render_id"],
+            voice["engine"],
+            voice["speaker"],
+            voice.get("style_id"),
+            voice["speed_scale"],
+            voice["pitch_scale"],
+            voice["intonation_scale"],
+            voice["sentence_gap_ms"],
+            voice["sample_rate"],
+            voice["audio_format"],
+        ),
+    )
     connection.execute(
         "INSERT INTO render_manual_reviews (render_id, required, fact_check_required, checked, publish_ready, notes) VALUES (?, ?, ?, ?, ?, ?)",
         (

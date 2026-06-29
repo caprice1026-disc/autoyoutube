@@ -242,6 +242,91 @@ def test_render_project_selects_bgm_and_passes_it_to_video_renderer(
     ]
 
 
+def test_render_project_adds_pexels_video_credit_once_with_bgm_credit(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project = _project()
+    project["visual_strategy"]["source_priority"] = ["pexels"]
+    project_path = tmp_path / "project.youtube.json"
+    project_path.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+    bgm_path = tmp_path / "mystery.wav"
+    bgm_path.write_bytes(b"fake wav")
+    video_path = tmp_path / "pexels_ocean.mp4"
+    video_path.write_bytes(b"fake mp4")
+    track = BgmTrack(
+        track_id="mystery_low",
+        file_path=bgm_path,
+        title="Mystery Low",
+        artist="Local",
+        source="youtube_audio_library",
+        license_type="youtube_audio_library_standard",
+        attribution_required=False,
+        attribution_text="Music: Mystery Low by Local from YouTube Audio Library",
+        mood="mysterious",
+        intensity="low",
+        duration_sec=20,
+        bpm=None,
+        loopable=True,
+        allowed_platforms=["youtube_shorts"],
+        used_count=0,
+        is_active=True,
+    )
+    asset = MediaAsset(
+        asset_id="pexels_ocean",
+        source="pexels",
+        local_file_path=video_path,
+        pexels_id="12345",
+        photographer="Ocean Creator",
+        photographer_url="https://www.pexels.com/@ocean-creator",
+        pexels_url="https://www.pexels.com/video/deep-ocean-12345/",
+        original_video_url="https://videos.pexels.com/video-files/12345/hd.mp4",
+        original_width=1080,
+        original_height=1920,
+        original_duration_sec=8.0,
+        orientation="portrait",
+        selected_quality="hd",
+        query="ocean",
+        tags=["ocean"],
+        used_count=0,
+        is_active=True,
+    )
+    monkeypatch.setattr(render_module, "RENDERS_DIR", tmp_path / "renders")
+    monkeypatch.setattr(render_module, "init_db", lambda: None)
+    monkeypatch.setattr(render_module, "connect", lambda: NullConnection())
+    monkeypatch.setattr(
+        render_module, "list_active_bgm_tracks", lambda connection: [track]
+    )
+    monkeypatch.setattr(
+        render_module, "list_active_media_assets", lambda connection: [asset]
+    )
+    monkeypatch.setattr(render_module, "upsert_project", lambda *args: None)
+    monkeypatch.setattr(render_module, "insert_render_summary", lambda *args: None)
+    renderer = FakeVideoRenderer()
+
+    rendered_path = render_project(project_path, video_renderer=renderer)
+
+    rendered = json.loads(rendered_path.read_text(encoding="utf-8"))
+    assert rendered["credits"]["items"] == [
+        {
+            "credit_type": "bgm",
+            "source": "youtube_audio_library",
+            "text": "Music: Mystery Low by Local from YouTube Audio Library",
+            "url": None,
+        },
+        {
+            "credit_type": "video",
+            "source": "pexels",
+            "text": "Video by Ocean Creator on Pexels",
+            "url": "https://www.pexels.com/video/deep-ocean-12345/",
+        },
+    ]
+    assert rendered["credits"]["description_text"].count("Video by Ocean Creator") == 1
+    credits_text = (rendered_path.parent / "credits.txt").read_text(encoding="utf-8")
+    assert "Music: Mystery Low by Local from YouTube Audio Library" in credits_text
+    assert "Video: Video by Ocean Creator on Pexels" in credits_text
+    assert "https://www.pexels.com/video/deep-ocean-12345/" in credits_text
+
+
 def test_render_project_selects_local_media_and_passes_visuals_to_video_renderer(
     tmp_path: Path, monkeypatch
 ) -> None:

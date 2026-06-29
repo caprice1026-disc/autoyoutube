@@ -211,7 +211,9 @@ data/*.db
 data/aivis-engine/
 renders/
 assets/pexels/
-assets/bgm/
+assets/bgm/*
+!assets/bgm/
+!assets/bgm/bgm_manifest.json
 assets/fonts/
 assets/local_media/
 AivisSpeech-Engine/

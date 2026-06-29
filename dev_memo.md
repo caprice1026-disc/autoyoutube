@@ -1,19 +1,21 @@
 # 開発メモ
 
-最終確認日: 2026-06-28 JST
+最終確認日: 2026-06-29 JST
 対象ブランチ: `codex-error-handling-bgm`
-直近push済みコミット: `61f7667 Add Pexels media fetching`
+直近push済みコミット: `6ffbec6 Harden YouTube render schemas`
 
 このメモは、要件定義書に対する現在地と次に実装する内容を整理するためのものです。Docker周りは、現在のリポジトリにある `Dockerfile`, `docker-compose.yml`, `docker-compose.aivis-build.yml` を正とします。
 
 ## 現在の状況
 
-- 作業ツリーは、スキーマ契約厳密化の未コミット差分を含みます。
+- 作業ツリーは、BGM実運用とquality evaluator追加の未コミット差分を含みます。
 - Python実行はユーザー作成済みの `.venv` を使う前提です。
 - `requirements.txt` には `jsonschema`, `pytest`, `ruff` が入っています。
-- 直近の確認では `ruff check .`, `ruff format . --check`, `pytest -q` が成功し、pytestは `49 passed` でした。
+- 直近の確認では `ruff check .`, `ruff format . --check`, `pytest -q` が成功し、pytestは `57 passed` でした。
 - `pytest.ini` でテスト収集対象を `tests/` に限定しています。これは、ローカルにcloneした外部リポジトリ `AivisSpeech-Engine/` のテストを誤って収集しないためです。
-- Aivis実音声、Pexels素材、ローカルBGM、FFmpegを通したサンプルrenderを確認済みです。生成MP4は H.264 / 1080x1920 / yuv420p / 30fps / AAC、実尺 16.8秒でした。
+- 指定BGM `assets\bgm\No One Here Gets In Alive - National Sweetheart.mp3` をmanifestへ登録し、sample projectのrenderで使用されることを確認済みです。
+- dry-run音声、Pexels素材、指定BGM、FFmpegを通したサンプルrenderを確認済みです。生成MP4は H.264 / 1080x1920 / yuv420p / 30fps / AAC、ffprobe実尺 15.53秒でした。
+- `evaluate-render` で `quality_report.json` を生成でき、直近サンプルは `status=pass` でした。
 
 ## Docker / AivisSpeech Engine の現状
 
@@ -53,13 +55,13 @@ Docker周りは現状実装を正とします。
 - `init-db` でSQLite DBを初期化できます。
 - project原本パス、ハッシュ、raw JSONは `youtube_projects` に保存します。
 - render結果は `youtube_renders.raw_rendered_json` に保存します。
-- 現時点で正規化保存しているrender関連テーブルは主に `render_manual_reviews`, `render_bgm_usage`, `render_visual_items` です。
+- 現時点で正規化保存しているrender関連テーブルは主に `render_voice_settings`, `render_manual_reviews`, `render_bgm_usage`, `render_visual_items` です。
+- `youtube_projects.voice_style_id` と `render_voice_settings.voice_style_id` に `voice.style_id` を保存します。
 - BGM使用時は `bgm_tracks.used_count` を更新します。
 - 映像素材使用時は `media_assets.used_count` を更新します。
 
 未完了のDB正規化:
 
-- `render_voice_settings`
 - `render_narration_files`
 - `render_audio_outputs`
 - `render_subtitle_styles`
@@ -88,10 +90,12 @@ Docker周りは現状実装を正とします。
 ### BGM
 
 - BGM manifestを `import-bgm` でDBへ登録できます。
+- `assets/bgm/bgm_manifest.json` はGit管理対象、BGM音源ファイル本体はGit管理外です。
 - `mood`, `intensity`, `allow_sources`, `avoid` に基づいてBGMを選定します。
 - FFmpeg実行時にBGMをナレーションへミックスします。
 - fade in / fade out / volume_db を反映します。
 - `credits.txt` にBGMクレジットを出します。
+- 現在のsample projectは `youtube_audio_library` の指定曲 `No One Here Gets In Alive` を使う設定です。
 
 ### 映像素材
 
@@ -100,6 +104,7 @@ Docker周りは現状実装を正とします。
 - ローカル映像素材manifestも `import-media` でDB登録できます。
 - `visual_query`, `source_priority`, `avoid_keywords`, `used_count` を見てローカル素材を選定します。
 - 選定素材は `rendered.youtube.json.visuals` と `render_visual_items` に残します。
+- Pexels素材を使った場合、`credits.items[]` と `credits.txt` にPexels video creditを重複排除して出します。
 - FFmpeg背景動画として最初に選ばれた素材をループ利用できます。
 - 現時点では、文ごとに別素材へ切り替えるタイムライン合成は未実装です。
 
@@ -113,8 +118,15 @@ Docker周りは現状実装を正とします。
 ### README / ExecPlan / テスト
 
 - READMEは現在のCLI、Docker、AivisSpeech Engine、BGM、映像素材manifest、検証手順を反映済みです。
-- `.agent/20260628_schema_contract_hardening.md` にスキーマ契約厳密化の計画と結果を残しています。
-- テストはJSON検証、CLIエラー、AivisSpeechクライアント、BGM、ローカル映像素材、Pexels APIクライアント、Docker Compose設定、FFmpegコマンド、レンダーパイプライン、`voice.style_id` 優先利用を対象にしています。
+- `.agent/20260629_bgm_quality_foundation.md` にBGM実運用とquality evaluator追加の計画と結果を残しています。
+- テストはJSON検証、CLIエラー、AivisSpeechクライアント、BGM、ローカル映像素材、Pexels APIクライアント、Docker Compose設定、FFmpegコマンド、レンダーパイプライン、`voice.style_id` 優先利用、DB保存、quality evaluatorを対象にしています。
+
+### 品質検査
+
+- `evaluate-render` CLIを追加済みです。
+- `renders/{project_id}/quality_report.json` を生成します。
+- 初期チェックとして、必須ファイル欠落、空のoutput.mp4、BGM credit漏れ、Pexels credit漏れ、字幕長、字幕表示時間、BGM音量、manual review必須状態を検査します。
+- 現時点ではスクリーンショット生成とffprobe実尺比較は未実装です。
 
 ## 要件定義書に対する進捗
 
@@ -128,11 +140,12 @@ Docker周りは現状実装を正とします。
 
 ### Phase 2: 仮レンダリング
 
-状態: 実動画E2Eまで確認済み、thumbnailは未実装
+状態: BGM付き実動画E2Eとquality_report生成まで確認済み、thumbnailは未実装
 
 - 外部APIなしでdry-run音声とFFmpeg出力ができます。
-- AivisSpeech実音声、Pexels素材、ローカルBGM、FFmpegで1本のMP4生成を確認済みです。
+- dry-run音声、Pexels素材、指定BGM、FFmpegで1本のMP4生成を確認済みです。
 - rendered JSON、description、credits、subtitle、ログを生成できます。
+- `quality_report.json` を生成できます。
 - thumbnailはまだ生成していません。
 
 ### Phase 3: AivisSpeech連携
@@ -155,10 +168,10 @@ Docker周りは現状実装を正とします。
 
 ### Phase 5: BGM連携
 
-状態: ローカルBGMは実装済み
+状態: 指定BGMで実運用確認済み
 
 - BGM manifest登録、条件選定、音量調整、fade、FFmpeg mix、クレジット出力は実装済みです。
-- YouTube Audio Library由来ファイルの運用ルールや実データ投入は今後です。
+- YouTube Audio Library由来の指定BGM `No One Here Gets In Alive` を登録し、renderで使われることを確認済みです。
 
 ### Phase 6: レビュー支援
 
@@ -191,10 +204,13 @@ Docker周りは現状実装を正とします。
 4. 複数映像素材のタイムライン合成がない
    - script itemごとのvisual情報は出ますが、FFmpeg背景は最初の素材を全体にループしています。
 
-5. thumbnailとレビュー更新CLIがない
+5. quality evaluatorの高度化がまだ残っている
+   - 初期チェックは実装済みですが、ffprobe実尺比較、動画寸法検査、スクリーンショット生成はまだありません。
+
+6. thumbnailとレビュー更新CLIがない
    - 投稿前作業を完結させるには `thumbnail.jpg` 生成と `mark-ready` が必要です。
 
-6. パス安全性の制約がまだ甘い
+7. パス安全性の制約がまだ甘い
    - 要件では任意パス読み込みを避け、プロジェクトルート配下に制限する方針です。
    - 現状のBGM/Media manifestは相対パス解決と存在確認はありますが、root配下制限までは徹底していません。
 
@@ -203,7 +219,7 @@ Docker周りは現状実装を正とします。
 優先順は以下が妥当です。
 
 1. 実動画の目視品質確認
-   - AivisSpeech実音声、BGM、Pexels素材、FFmpegを通した機械的E2Eは完了済みです。
+   - dry-run音声、BGM、Pexels素材、FFmpegを通した機械的E2Eは完了済みです。
    - 次はユーザー目線で `output.mp4` を見て、字幕位置、BGM音量、素材の違和感を確認する。
    - 必要に応じて字幕スタイル、BGM音量、映像素材選定を調整する。
 
@@ -212,40 +228,44 @@ Docker周りは現状実装を正とします。
    - `project.youtube.json` のspeakerが利用可能か事前検証する。
    - サンプルprojectをDocker初期モデルで動く話者、またはstyle IDへ更新する。
 
-3. Pexels連携の強化
+3. quality evaluatorの強化
+   - ffprobe実尺、動画寸法、fps、スクリーンショット生成を追加する。
+   - `quality_report.json` をCodex改善ループの入力として使いやすくする。
+
+4. Pexels連携の強化
    - render中の自動取得をオプション化する。
    - Pexels APIのレート制限、0件時fallback、download失敗時の再試行を強化する。
    - Pexelsクレジットを `credits.txt` / `description.txt` により明示的に出す。
 
-4. render結果のDB正規化拡張
+5. render結果のDB正規化拡張
    - `render_narration_files`, `render_audio_outputs`, `render_subtitle_items`, `render_ffmpeg_logs`, `render_credits` などへ保存する。
    - raw JSONだけでなく、検索・分析したい項目をDBから引ける状態にする。
 
-5. 映像タイムライン合成
+6. 映像タイムライン合成
    - script itemごとに選ばれた素材を、それぞれの `video_start_sec` / `video_end_sec` に合わせて切り替える。
    - FFmpeg filter graphを拡張する。
    - 横動画用の `crop_landscape_to_9_16` のログをより正確に残す。
 
-6. レビュー支援
+7. レビュー支援
    - `mark-ready`, `mark-reviewed`, `list-renders` CLIを追加する。
    - `render_manual_reviews` と `youtube_uploads` を更新できるようにする。
 
-7. thumbnail生成
+8. thumbnail生成
    - Pillowを依存に追加する。
    - `thumbnail.jpg` を生成する。
    - レンダー結果とDBへ保存する。
 
-8. 安全性強化
+9. 安全性強化
    - BGMと映像素材の読み込みを許可ディレクトリ配下に制限する。
    - 環境変数やAPIキーがGitに入らないことをテスト・READMEで明確にする。
 
-9. YouTube Analytics連携
+10. YouTube Analytics連携
    - 初期MVP後の課題として扱う。
    - `youtube_metrics_snapshots` への保存と `analytics_summary.json` 出力を追加する。
 
 ## 推奨する直近の実装順
 
-次の1手は、実生成済み動画の目視品質確認です。機械的なE2Eは通っているため、字幕位置、BGM音量、Pexels素材の違和感を確認し、調整が必要な箇所を絞ります。
+次の1手は、実生成済み動画の目視品質確認です。機械的なE2Eと `quality_report.json` は通っているため、字幕位置、BGM音量、Pexels素材の違和感を確認し、調整が必要な箇所を絞ります。
 
 目視確認後は、DB正規化拡張と映像タイムライン合成へ進むのが自然です。Pexelsはすでにキャッシュ型の最小実装があるため、render中自動取得よりも、クレジット強化と0件時fallbackを先に入れる方が安全です。
 
@@ -258,6 +278,7 @@ Docker周りは現状実装を正とします。
 .\.venv\Scripts\python.exe -m src.main validate-project projects\trivia_submarine_black_001\project.youtube.json
 .\.venv\Scripts\python.exe -m src.main render projects\trivia_submarine_black_001\project.youtube.json --voice-mode aivis --video-mode ffmpeg --aivis-base-url http://127.0.0.1:10101
 .\.venv\Scripts\python.exe -m src.main validate-render renders\trivia_submarine_black_001\rendered.youtube.json
+.\.venv\Scripts\python.exe -m src.main evaluate-render renders\trivia_submarine_black_001\rendered.youtube.json
 .\.venv\Scripts\python.exe -m src.main check-pexels "deep ocean" --per-page 1
 .\.venv\Scripts\python.exe -m src.main fetch-pexels projects\trivia_submarine_black_001\project.youtube.json --per-query 1 --max-downloads 1
 docker compose --profile aivis config

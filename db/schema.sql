@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS youtube_projects (
     -- voice
     voice_engine TEXT NOT NULL DEFAULT 'aivis_speech',
     voice_speaker TEXT NOT NULL,
+    voice_style_id INTEGER,
     voice_speed_scale REAL NOT NULL DEFAULT 1.0,
     voice_pitch_scale REAL NOT NULL DEFAULT 0.0,
     voice_intonation_scale REAL NOT NULL DEFAULT 1.0,
@@ -388,6 +389,7 @@ CREATE TABLE IF NOT EXISTS render_voice_settings (
 
     engine TEXT NOT NULL DEFAULT 'aivis_speech',
     speaker TEXT NOT NULL,
+    voice_style_id INTEGER,
 
     speed_scale REAL NOT NULL,
     pitch_scale REAL NOT NULL,
