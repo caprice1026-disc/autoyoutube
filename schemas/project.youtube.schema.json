@@ -147,6 +147,10 @@
                     "minLength": 1,
                     "maxLength": 80
                 },
+                "style_id": {
+                    "type": "integer",
+                    "minimum": 0
+                },
                 "speed_scale": {
                     "type": "number",
                     "minimum": 0.5,

@@ -2,17 +2,18 @@
 
 最終確認日: 2026-06-28 JST
 対象ブランチ: `codex-error-handling-bgm`
-直近push済みコミット: `24f4977 Add Docker Aivis engine and local media support`
+直近push済みコミット: `61f7667 Add Pexels media fetching`
 
 このメモは、要件定義書に対する現在地と次に実装する内容を整理するためのものです。Docker周りは、現在のリポジトリにある `Dockerfile`, `docker-compose.yml`, `docker-compose.aivis-build.yml` を正とします。
 
 ## 現在の状況
 
-- 作業ツリーは、メモ更新前の時点では `origin/codex-error-handling-bgm` と同期済みでした。
+- 作業ツリーは、スキーマ契約厳密化の未コミット差分を含みます。
 - Python実行はユーザー作成済みの `.venv` を使う前提です。
 - `requirements.txt` には `jsonschema`, `pytest`, `ruff` が入っています。
-- 直近の確認では `ruff check .`, `ruff format . --check`, `pytest -q` が成功し、pytestは `41 passed` でした。
+- 直近の確認では `ruff check .`, `ruff format . --check`, `pytest -q` が成功し、pytestは `49 passed` でした。
 - `pytest.ini` でテスト収集対象を `tests/` に限定しています。これは、ローカルにcloneした外部リポジトリ `AivisSpeech-Engine/` のテストを誤って収集しないためです。
+- Aivis実音声、Pexels素材、ローカルBGM、FFmpegを通したサンプルrenderを確認済みです。生成MP4は H.264 / 1080x1920 / yuv420p / 30fps / AAC、実尺 16.8秒でした。
 
 ## Docker / AivisSpeech Engine の現状
 
@@ -32,13 +33,16 @@ Docker周りは現状実装を正とします。
 
 注意点:
 
-- サンプル `project.youtube.json` の話者は `Anneli` ですが、公式CPUイメージ初回状態で確認できた話者は `まお` と `コハク` でした。Aivis実音声でサンプルをrenderするには、話者名またはstyle IDの調整、もしくは該当モデルの追加が必要です。
+- サンプル `project.youtube.json` は、公式CPUイメージ初回状態で確認できた `まお` のstyle ID `888753760` を指定しています。別モデルを使う場合は、起動中Engineの `/speakers` でstyle IDを確認して差し替えてください。
 
 ## 実装済み
 
 ### JSON / CLI / エラーハンドリング
 
 - `schemas/project.youtube.schema.json` と `schemas/rendered.youtube.schema.json` を使った検証があります。
+- `project.youtube.schema.json` は任意の `voice.style_id` を受け付けます。
+- `rendered.youtube.schema.json` は、音声、映像、字幕、credits、validation、manual_reviewなどの主要構造を詳細に検証します。
+- credits itemは `credit_type` に統一しています。
 - `validate-project`, `validate-render`, `init-db`, `render`, `import-bgm`, `list-bgm`, `import-media`, `list-assets` CLIがあります。
 - CLIの業務エラーは `Error`, `Location`, `Details`, `Next step` 形式で表示します。
 - `--debug` 指定時はtracebackを表示します。
@@ -76,6 +80,7 @@ Docker周りは現状実装を正とします。
 - dry-runでは文単位の無音WAVを生成します。
 - AivisSpeech APIクライアントがあります。
 - `AIVIS_SPEECH_BASE_URL` と `--aivis-base-url` で接続先を切り替えられます。
+- `voice.style_id` がproject JSONにある場合、音声生成では `speaker` よりstyle IDを優先します。
 - 文単位WAVを `sentence_gap_ms` を挟んで `narration.wav` に結合します。
 - WAV実測時間から字幕タイミングを作ります。
 - ASS字幕 `subtitle.ass` を生成します。
@@ -108,33 +113,36 @@ Docker周りは現状実装を正とします。
 ### README / ExecPlan / テスト
 
 - READMEは現在のCLI、Docker、AivisSpeech Engine、BGM、映像素材manifest、検証手順を反映済みです。
-- `.agent/20260628_local_media_assets.md` と `.agent/20260628_docker_compose_aivis.md` に実装計画と結果を残しています。
-- テストはJSON検証、CLIエラー、AivisSpeechクライアント、BGM、ローカル映像素材、Pexels APIクライアント、Docker Compose設定、FFmpegコマンド、レンダーパイプラインを対象にしています。
+- `.agent/20260628_schema_contract_hardening.md` にスキーマ契約厳密化の計画と結果を残しています。
+- テストはJSON検証、CLIエラー、AivisSpeechクライアント、BGM、ローカル映像素材、Pexels APIクライアント、Docker Compose設定、FFmpegコマンド、レンダーパイプライン、`voice.style_id` 優先利用を対象にしています。
 
 ## 要件定義書に対する進捗
 
 ### Phase 1: 基盤構築
 
-状態: ほぼ完了
+状態: 完了
 
 - ディレクトリ構成、schema、DB schema、SQLite初期化、JSONバリデーションCLIは実装済みです。
 - エラー表示も運用向けに改善済みです。
+- 方針書の推奨に合わせて、`voice.style_id` と厳密な `rendered.youtube.schema.json` も追加済みです。
 
 ### Phase 2: 仮レンダリング
 
-状態: 完了に近い
+状態: 実動画E2Eまで確認済み、thumbnailは未実装
 
 - 外部APIなしでdry-run音声とFFmpeg出力ができます。
+- AivisSpeech実音声、Pexels素材、ローカルBGM、FFmpegで1本のMP4生成を確認済みです。
 - rendered JSON、description、credits、subtitle、ログを生成できます。
 - thumbnailはまだ生成していません。
 
 ### Phase 3: AivisSpeech連携
 
-状態: 接続経路は実装済み、実運用調整が残り
+状態: 接続経路とサンプル実音声renderは確認済み、話者管理CLIが残り
 
 - AivisSpeech Engine Dockerサーバーとの疎通は確認済みです。
 - AivisSpeechClientから短文WAV生成も確認済みです。
-- サンプルprojectの話者名とDocker初期モデルの話者名が一致していないため、話者管理を整える必要があります。
+- サンプルprojectはDocker初期モデルで使える `style_id: 888753760` を指定済みです。
+- 起動中Engineの話者一覧をCLIで表示・検証する機能はまだありません。
 
 ### Phase 4: Pexels連携
 
@@ -170,8 +178,8 @@ Docker周りは現状実装を正とします。
 ## 現在の主なギャップ
 
 1. 話者管理が弱い
-   - AivisSpeechの話者名/style IDを一覧表示・検証するCLIがありません。
-   - サンプルprojectの `Anneli` は、確認済みのDocker初期モデルと一致していません。
+   - `voice.style_id` の入力と優先利用は入りましたが、AivisSpeechの話者名/style IDを一覧表示・検証するCLIはまだありません。
+   - サンプルprojectは既定Engine向けstyle IDへ更新済みですが、別モデル利用時の検証支援は未実装です。
 
 2. render結果のDB正規化が未完
    - raw JSON保存はありますが、要件上の全render系テーブルへはまだ保存していません。
@@ -194,47 +202,52 @@ Docker周りは現状実装を正とします。
 
 優先順は以下が妥当です。
 
-1. AivisSpeech話者管理
+1. 実動画の目視品質確認
+   - AivisSpeech実音声、BGM、Pexels素材、FFmpegを通した機械的E2Eは完了済みです。
+   - 次はユーザー目線で `output.mp4` を見て、字幕位置、BGM音量、素材の違和感を確認する。
+   - 必要に応じて字幕スタイル、BGM音量、映像素材選定を調整する。
+
+2. AivisSpeech話者管理
    - `list-speakers` CLIを追加する。
    - `project.youtube.json` のspeakerが利用可能か事前検証する。
    - サンプルprojectをDocker初期モデルで動く話者、またはstyle IDへ更新する。
 
-2. Pexels連携の強化
+3. Pexels連携の強化
    - render中の自動取得をオプション化する。
    - Pexels APIのレート制限、0件時fallback、download失敗時の再試行を強化する。
    - Pexelsクレジットを `credits.txt` / `description.txt` により明示的に出す。
 
-3. render結果のDB正規化拡張
+4. render結果のDB正規化拡張
    - `render_narration_files`, `render_audio_outputs`, `render_subtitle_items`, `render_ffmpeg_logs`, `render_credits` などへ保存する。
    - raw JSONだけでなく、検索・分析したい項目をDBから引ける状態にする。
 
-4. 映像タイムライン合成
+5. 映像タイムライン合成
    - script itemごとに選ばれた素材を、それぞれの `video_start_sec` / `video_end_sec` に合わせて切り替える。
    - FFmpeg filter graphを拡張する。
    - 横動画用の `crop_landscape_to_9_16` のログをより正確に残す。
 
-5. レビュー支援
+6. レビュー支援
    - `mark-ready`, `mark-reviewed`, `list-renders` CLIを追加する。
    - `render_manual_reviews` と `youtube_uploads` を更新できるようにする。
 
-6. thumbnail生成
+7. thumbnail生成
    - Pillowを依存に追加する。
    - `thumbnail.jpg` を生成する。
    - レンダー結果とDBへ保存する。
 
-7. 安全性強化
+8. 安全性強化
    - BGMと映像素材の読み込みを許可ディレクトリ配下に制限する。
    - 環境変数やAPIキーがGitに入らないことをテスト・READMEで明確にする。
 
-8. YouTube Analytics連携
+9. YouTube Analytics連携
    - 初期MVP後の課題として扱う。
    - `youtube_metrics_snapshots` への保存と `analytics_summary.json` 出力を追加する。
 
 ## 推奨する直近の実装順
 
-次の1手としては、Pexelsより先にAivisSpeech話者管理を入れるのが安全です。理由は、Docker上のAivisSpeech Engineが起動していても、projectのspeaker指定が現実のモデルと一致しないと実音声renderが失敗するためです。
+次の1手は、実生成済み動画の目視品質確認です。機械的なE2Eは通っているため、字幕位置、BGM音量、Pexels素材の違和感を確認し、調整が必要な箇所を絞ります。
 
-その次にPexels連携を強化します。最小実装として `fetch-pexels` は入ったため、次はPexelsクレジット出力、0件時fallback、render中の任意自動取得を足すのが自然です。
+目視確認後は、DB正規化拡張と映像タイムライン合成へ進むのが自然です。Pexelsはすでにキャッシュ型の最小実装があるため、render中自動取得よりも、クレジット強化と0件時fallbackを先に入れる方が安全です。
 
 ## よく使う確認コマンド
 
@@ -242,6 +255,9 @@ Docker周りは現状実装を正とします。
 .\.venv\Scripts\python.exe -m ruff check .
 .\.venv\Scripts\python.exe -m ruff format . --check
 .\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe -m src.main validate-project projects\trivia_submarine_black_001\project.youtube.json
+.\.venv\Scripts\python.exe -m src.main render projects\trivia_submarine_black_001\project.youtube.json --voice-mode aivis --video-mode ffmpeg --aivis-base-url http://127.0.0.1:10101
+.\.venv\Scripts\python.exe -m src.main validate-render renders\trivia_submarine_black_001\rendered.youtube.json
 .\.venv\Scripts\python.exe -m src.main check-pexels "deep ocean" --per-page 1
 .\.venv\Scripts\python.exe -m src.main fetch-pexels projects\trivia_submarine_black_001\project.youtube.json --per-query 1 --max-downloads 1
 docker compose --profile aivis config
