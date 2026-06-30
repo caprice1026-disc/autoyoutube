@@ -32,6 +32,20 @@ class FakeVoiceService:
         return output_path
 
 
+class ClippedVoiceService:
+    def synthesize_to_file(
+        self,
+        text: str,
+        speaker: str | int,
+        output_path: Path,
+        speed_scale: float,
+        pitch_scale: float,
+        intonation_scale: float,
+    ) -> Path:
+        _write_constant_wav(output_path, 1.0, amplitude=32767)
+        return output_path
+
+
 class NullConnection:
     def __enter__(self) -> "NullConnection":
         return self
@@ -49,6 +63,27 @@ def _write_silent_wav(
         wav.setsampwidth(2)
         wav.setframerate(framerate)
         wav.writeframes(b"\x00" * int(duration_sec * framerate) * 2)
+
+
+def _write_constant_wav(
+    path: Path, duration_sec: float, *, amplitude: int, framerate: int = 8000
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(path), "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(framerate)
+        frame = amplitude.to_bytes(2, "little", signed=True)
+        wav.writeframes(frame * int(duration_sec * framerate))
+
+
+def _peak_sample(path: Path) -> int:
+    with wave.open(str(path), "rb") as wav:
+        raw = wav.readframes(wav.getnframes())
+    return max(
+        abs(int.from_bytes(raw[index : index + 2], "little", signed=True))
+        for index in range(0, len(raw), 2)
+    )
 
 
 def _project() -> dict[str, Any]:
@@ -216,3 +251,29 @@ def test_render_project_prefers_voice_style_id_when_present(
     ]
     assert rendered["voice"]["speaker"] == "Anneli"
     assert rendered["voice"]["style_id"] == 888753760
+
+
+def test_render_project_normalizes_clipped_final_audio(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project = _project()
+    project_path = tmp_path / "project.youtube.json"
+    project_path.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(render_module, "RENDERS_DIR", tmp_path / "renders")
+    monkeypatch.setattr(render_module, "init_db", lambda: None)
+    monkeypatch.setattr(render_module, "connect", lambda: NullConnection())
+    monkeypatch.setattr(render_module, "list_active_bgm_tracks", lambda connection: [])
+    monkeypatch.setattr(
+        render_module, "list_active_media_assets", lambda connection: []
+    )
+    monkeypatch.setattr(render_module, "upsert_project", lambda *args: None)
+    monkeypatch.setattr(render_module, "insert_render_summary", lambda *args: None)
+
+    rendered_path = render_project(project_path, voice_service=ClippedVoiceService())
+
+    rendered = json.loads(rendered_path.read_text(encoding="utf-8"))
+    audio_dir = rendered_path.parent / "audio"
+    assert _peak_sample(audio_dir / "001.wav") == 32767
+    assert _peak_sample(audio_dir / "final_audio.wav") < 32767
+    assert rendered["audio"]["loudness_normalization"]["enabled"] is True
+    assert rendered["audio"]["loudness_normalization"]["target_peak_dbfs"] == -3.0

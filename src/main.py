@@ -19,6 +19,7 @@ from src.errors import AppError
 from src.media.library import load_media_manifest
 from src.media.pexels_client import PexelsClient
 from src.pipeline.render_project import render_project
+from src.quality.evaluator import evaluate_render
 from src.render.ffmpeg_renderer import FfmpegVideoRenderer
 from src.validators.json_validator import load_json, validate_json_file
 from src.voice.aivis_client import AivisSpeechClient
@@ -35,6 +36,10 @@ def main() -> int:
     vp.add_argument("path")
     vr = sub.add_parser("validate-render", help="validate rendered.youtube.json")
     vr.add_argument("path")
+    er = sub.add_parser(
+        "evaluate-render", help="write quality_report.json for a render"
+    )
+    er.add_argument("path")
     ib = sub.add_parser("import-bgm", help="import BGM tracks from a manifest JSON")
     ib.add_argument("manifest_path")
     sub.add_parser("list-bgm", help="list active BGM tracks")
@@ -73,6 +78,8 @@ def main() -> int:
             return _validate(Path(args.path), PROJECT_SCHEMA_PATH, "project JSON")
         if args.command == "validate-render":
             return _validate(Path(args.path), RENDERED_SCHEMA_PATH, "rendered JSON")
+        if args.command == "evaluate-render":
+            return _evaluate_render(Path(args.path))
         if args.command == "import-bgm":
             return _import_bgm(Path(args.manifest_path))
         if args.command == "list-bgm":
@@ -142,6 +149,12 @@ def _validate(json_path: Path, schema_path: Path, label: str) -> int:
             print(f"- {error.to_text()}")
         return 1
     print(f"{label} validation succeeded: {json_path}")
+    return 0
+
+
+def _evaluate_render(rendered_path: Path) -> int:
+    evaluate_render(rendered_path)
+    print(f"Quality report written: {rendered_path.parent / 'quality_report.json'}")
     return 0
 
 

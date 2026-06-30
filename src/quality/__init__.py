@@ -1,0 +1,1 @@
+"""Render quality evaluation helpers."""

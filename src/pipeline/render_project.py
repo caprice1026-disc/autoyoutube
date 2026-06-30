@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import shutil
 import wave
 from datetime import datetime, timezone
@@ -10,6 +11,24 @@ from typing import Any, Protocol
 from src.bgm.library import BgmTrack
 from src.bgm.selector import select_bgm_track
 from src.config import PROJECT_SCHEMA_PATH, RENDERED_SCHEMA_PATH, RENDERS_DIR
+from src.defaults import (
+    DEFAULT_AUDIO_CODEC,
+    DEFAULT_CRF,
+    DEFAULT_PIX_FMT,
+    DEFAULT_PRESET,
+    DEFAULT_SUBTITLE_ALIGNMENT,
+    DEFAULT_SUBTITLE_FONT_NAME,
+    DEFAULT_SUBTITLE_FONT_SIZE,
+    DEFAULT_SUBTITLE_MARGIN_V,
+    DEFAULT_NARRATION_PEAK_DBFS,
+    DEFAULT_SUBTITLE_OUTLINE,
+    DEFAULT_SUBTITLE_OUTLINE_COLOR,
+    DEFAULT_SUBTITLE_PRIMARY_COLOR,
+    DEFAULT_SUBTITLE_SHADOW,
+    MAX_SUBTITLE_CHARS,
+    TARGET_HEIGHT,
+    TARGET_WIDTH,
+)
 from src.db.database import connect, init_db
 from src.db.repositories import (
     insert_render_summary,
@@ -77,12 +96,17 @@ def render_project(
     logs_dir = render_dir / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
 
-    narration_files, subtitle_items, visuals, actual_duration, sample_rate = (
-        _generate_voice_and_timing(
-            project,
-            render_dir,
-            voice_service,
-        )
+    (
+        narration_files,
+        subtitle_items,
+        visuals,
+        actual_duration,
+        sample_rate,
+        loudness_normalization,
+    ) = _generate_voice_and_timing(
+        project,
+        render_dir,
+        voice_service,
     )
     selected_bgm = _select_render_bgm(project["bgm"])
     bgm_render = _build_bgm_render(project["bgm"], selected_bgm, actual_duration)
@@ -91,7 +115,7 @@ def render_project(
     now = datetime.now(timezone.utc)
     render_id = f"render_{now.strftime('%Y%m%d_%H%M%S')}"
     description = _build_description(project)
-    credits_required, credits_items, credits = _build_credits(selected_bgm)
+    credits_required, credits_items, credits = _build_credits(selected_bgm, visuals)
     subtitle = _build_subtitle(subtitle_items)
     (render_dir / "description.txt").write_text(description, encoding="utf-8")
     (render_dir / "credits.txt").write_text(credits, encoding="utf-8")
@@ -125,6 +149,7 @@ def render_project(
         visuals,
         actual_duration,
         sample_rate,
+        loudness_normalization,
         voice_service is None,
         video_result,
     )
@@ -154,7 +179,12 @@ def _generate_voice_and_timing(
     render_dir: Path,
     voice_service: VoiceService | None,
 ) -> tuple[
-    list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], float, int
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    float,
+    int,
+    dict[str, Any],
 ]:
     audio_dir = render_dir / "audio"
     video_dir = render_dir / "video"
@@ -182,7 +212,10 @@ def _generate_voice_and_timing(
     actual_duration = round(
         merge_wav_files(wav_paths, narration_path, voice["sentence_gap_ms"]), 3
     )
-    shutil.copyfile(narration_path, audio_dir / "final_audio.wav")
+    final_audio_path = audio_dir / "final_audio.wav"
+    loudness_normalization = _write_peak_normalized_wav(
+        narration_path, final_audio_path
+    )
 
     gap = voice["sentence_gap_ms"] / 1000
     cursor = 0.0
@@ -206,7 +239,7 @@ def _generate_voice_and_timing(
         subtitle_items.append(
             {
                 "index": item["index"],
-                "text": item["text"],
+                "text": _wrap_subtitle_text(item["text"]),
                 "start_sec": start,
                 "end_sec": end,
                 "caption_style_hint": item["caption_style_hint"],
@@ -244,6 +277,7 @@ def _generate_voice_and_timing(
         visuals,
         actual_duration,
         _wav_sample_rate(narration_path),
+        loudness_normalization,
     )
 
 
@@ -265,6 +299,7 @@ def _build_rendered(
     visuals: list[dict[str, Any]],
     actual_duration: float,
     sample_rate: int,
+    loudness_normalization: dict[str, Any],
     dry_run_voice: bool,
     video_result: dict[str, Any],
 ) -> dict[str, Any]:
@@ -326,7 +361,7 @@ def _build_rendered(
             "merged_narration_duration_sec": actual_duration,
             "final_audio_path": _rel(render_dir / "audio" / "final_audio.wav"),
             "final_audio_duration_sec": actual_duration,
-            "loudness_normalization": {"enabled": False},
+            "loudness_normalization": loudness_normalization,
         },
         "bgm": bgm_render
         if bgm_render is not None
@@ -341,14 +376,14 @@ def _build_rendered(
         "subtitles": {
             "format": "ass",
             "style": {
-                "font_name": "Noto Sans CJK JP",
-                "font_size": 72,
-                "primary_color": "FFFFFF",
-                "outline_color": "000000",
-                "outline": 5,
-                "shadow": 1,
-                "alignment": "bottom_center",
-                "margin_v": 220,
+                "font_name": DEFAULT_SUBTITLE_FONT_NAME,
+                "font_size": DEFAULT_SUBTITLE_FONT_SIZE,
+                "primary_color": DEFAULT_SUBTITLE_PRIMARY_COLOR,
+                "outline_color": DEFAULT_SUBTITLE_OUTLINE_COLOR,
+                "outline": DEFAULT_SUBTITLE_OUTLINE,
+                "shadow": DEFAULT_SUBTITLE_SHADOW,
+                "alignment": DEFAULT_SUBTITLE_ALIGNMENT,
+                "margin_v": DEFAULT_SUBTITLE_MARGIN_V,
             },
             "items": subtitle_items,
         },
@@ -369,10 +404,10 @@ def _build_rendered(
             "command_log_path": _rel(Path(video_result["command_log_path"])),
             "stderr_log_path": _rel(Path(video_result["stderr_log_path"])),
             "video_codec": project["target"]["video_format"]["video_codec"],
-            "audio_codec": "aac",
-            "pix_fmt": "yuv420p",
-            "preset": "medium",
-            "crf": 20,
+            "audio_codec": DEFAULT_AUDIO_CODEC,
+            "pix_fmt": DEFAULT_PIX_FMT,
+            "preset": DEFAULT_PRESET,
+            "crf": DEFAULT_CRF,
         },
         "validation": {
             "project_json_valid": True,
@@ -460,14 +495,82 @@ def _select_render_visuals(
         return visuals
 
     selected_visuals: list[dict[str, Any]] = []
+    previous_asset_id: str | None = None
     for visual in visuals:
-        asset = select_media_asset(
-            {"visual_query": visual["visual_query"]}, project["visual_strategy"], assets
+        asset = _select_media_asset_avoiding_previous(
+            visual,
+            project["visual_strategy"],
+            assets,
+            previous_asset_id,
         )
-        selected_visuals.append(
+        if asset is None:
+            asset = _select_fallback_media_asset(
+                project["visual_strategy"],
+                assets,
+                previous_asset_id,
+            )
+        selected_visual = (
             _build_visual_from_asset(visual, asset) if asset is not None else visual
         )
+        selected_visuals.append(selected_visual)
+        previous_asset_id = selected_visual.get("asset_id")
     return selected_visuals
+
+
+def _select_media_asset_avoiding_previous(
+    visual: dict[str, Any],
+    visual_strategy: dict[str, Any],
+    assets: list[MediaAsset],
+    previous_asset_id: str | None,
+) -> MediaAsset | None:
+    script_item = {"visual_query": visual["visual_query"]}
+    selected = select_media_asset(script_item, visual_strategy, assets)
+    if selected is None or selected.asset_id != previous_asset_id:
+        return selected
+    alternatives = [asset for asset in assets if asset.asset_id != previous_asset_id]
+    return select_media_asset(script_item, visual_strategy, alternatives) or selected
+
+
+def _select_fallback_media_asset(
+    visual_strategy: dict[str, Any],
+    assets: list[MediaAsset],
+    previous_asset_id: str | None,
+) -> MediaAsset | None:
+    candidates = _allowed_media_assets(visual_strategy, assets)
+    if not candidates:
+        return None
+
+    non_consecutive = [
+        asset for asset in candidates if asset.asset_id != previous_asset_id
+    ]
+    return sorted(
+        non_consecutive or candidates,
+        key=lambda asset: _media_asset_sort_key(asset, visual_strategy),
+    )[0]
+
+
+def _allowed_media_assets(
+    visual_strategy: dict[str, Any], assets: list[MediaAsset]
+) -> list[MediaAsset]:
+    source_priority = list(visual_strategy.get("source_priority") or [])
+    return [
+        asset
+        for asset in assets
+        if asset.is_active and (not source_priority or asset.source in source_priority)
+    ]
+
+
+def _media_asset_sort_key(
+    asset: MediaAsset, visual_strategy: dict[str, Any]
+) -> tuple[int, int, int, str]:
+    source_priority = list(visual_strategy.get("source_priority") or [])
+    source_rank = (
+        source_priority.index(asset.source)
+        if asset.source in source_priority
+        else len(source_priority)
+    )
+    orientation_rank = 0 if asset.orientation == "portrait" else 1
+    return (source_rank, orientation_rank, asset.used_count, asset.asset_id)
 
 
 def _build_visual_from_asset(
@@ -531,28 +634,62 @@ def _build_bgm_render(
     }
 
 
-def _build_credits(track: BgmTrack | None) -> tuple[bool, list[dict[str, Any]], str]:
-    if track is None:
+def _build_credits(
+    track: BgmTrack | None, visuals: list[dict[str, Any]]
+) -> tuple[bool, list[dict[str, Any]], str]:
+    items: list[dict[str, Any]] = []
+    lines: list[str] = []
+    required = False
+    if track is not None:
+        text = track.attribution_text or f"BGM: {track.title} by {track.artist}".strip()
+        items.append(
+            {"credit_type": "bgm", "source": track.source, "text": text, "url": None}
+        )
+        lines.append(text)
+        required = track.attribution_required
+
+    seen_pexels_urls: set[str] = set()
+    for visual in visuals:
+        if visual.get("source") != "pexels":
+            continue
+        pexels_url = str(visual.get("pexels_url") or "").strip()
+        if not pexels_url or pexels_url in seen_pexels_urls:
+            continue
+        seen_pexels_urls.add(pexels_url)
+        photographer = str(visual.get("photographer") or "Pexels creator").strip()
+        text = f"Video by {photographer} on Pexels"
+        items.append(
+            {
+                "credit_type": "video",
+                "source": "pexels",
+                "text": text,
+                "url": pexels_url,
+            }
+        )
+        lines.extend([f"Video: {text}", pexels_url])
+
+    if not items:
         return (
             False,
             [],
             "Dry-run render: external visual media and BGM were not used.\n",
         )
-    text = track.attribution_text or f"BGM: {track.title} by {track.artist}".strip()
-    item = {"credit_type": "bgm", "source": track.source, "text": text, "url": None}
-    return track.attribution_required, [item], text + "\n"
+    return required or bool(seen_pexels_urls), items, "\n".join(lines) + "\n"
 
 
 def _build_subtitle(subtitle_items: list[dict[str, Any]]) -> str:
     lines = [
         "[Script Info]",
         "ScriptType: v4.00+",
-        "PlayResX: 1080",
-        "PlayResY: 1920",
+        f"PlayResX: {TARGET_WIDTH}",
+        f"PlayResY: {TARGET_HEIGHT}",
         "",
         "[V4+ Styles]",
         "Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-        "Style: Default,Noto Sans CJK JP,72,&H00FFFFFF,&H00000000,1,5,1,2,80,80,220,1",
+        f"Style: Default,{DEFAULT_SUBTITLE_FONT_NAME},{DEFAULT_SUBTITLE_FONT_SIZE},"
+        "&H00FFFFFF,&H00000000,1,"
+        f"{DEFAULT_SUBTITLE_OUTLINE},{DEFAULT_SUBTITLE_SHADOW},2,80,80,"
+        f"{DEFAULT_SUBTITLE_MARGIN_V},1",
         "",
         "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
@@ -562,6 +699,35 @@ def _build_subtitle(subtitle_items: list[dict[str, Any]]) -> str:
             f"Dialogue: 0,{_ass_time(item['start_sec'])},{_ass_time(item['end_sec'])},Default,,0,0,0,,{item['text']}"
         )
     return "\n".join(lines) + "\n"
+
+
+def _wrap_subtitle_text(text: str, max_chars: int = MAX_SUBTITLE_CHARS) -> str:
+    if len(text) <= max_chars:
+        return text
+
+    remaining = text
+    lines: list[str] = []
+    while len(remaining) > max_chars:
+        break_at = _subtitle_break_position(remaining, max_chars)
+        lines.append(remaining[:break_at].strip())
+        remaining = remaining[break_at:].strip()
+    if remaining:
+        lines.append(remaining)
+    return r"\N".join(lines)
+
+
+def _subtitle_break_position(text: str, max_chars: int) -> int:
+    search_limit = min(max_chars, len(text) - 1)
+    midpoint = min(len(text), max_chars * 2) / 2
+    punctuation = "、。！？!? "
+    candidates = [
+        index + 1
+        for index, char in enumerate(text[:search_limit])
+        if char in punctuation and 0 < index + 1 < len(text)
+    ]
+    if candidates:
+        return min(candidates, key=lambda position: abs(position - midpoint))
+    return search_limit
 
 
 def _ass_time(seconds: float) -> str:
@@ -594,3 +760,57 @@ def _write_silent_wav(
 def _wav_sample_rate(path: Path) -> int:
     with wave.open(str(path), "rb") as wav:
         return wav.getframerate()
+
+
+def _write_peak_normalized_wav(source_path: Path, output_path: Path) -> dict[str, Any]:
+    try:
+        with wave.open(str(source_path), "rb") as source:
+            params = source.getparams()
+            raw = source.readframes(source.getnframes())
+    except wave.Error:
+        shutil.copyfile(source_path, output_path)
+        return {"enabled": False, "reason": "unsupported_wav"}
+
+    if params.sampwidth != 2 or not raw:
+        shutil.copyfile(source_path, output_path)
+        return {"enabled": False, "reason": "unsupported_sample_width_or_empty"}
+
+    samples = [
+        int.from_bytes(raw[index : index + params.sampwidth], "little", signed=True)
+        for index in range(0, len(raw), params.sampwidth)
+    ]
+    max_value = 2 ** (params.sampwidth * 8 - 1) - 1
+    peak = max((abs(sample) for sample in samples), default=0)
+    source_peak_dbfs = _dbfs(peak, max_value)
+    if peak == 0 or source_peak_dbfs <= DEFAULT_NARRATION_PEAK_DBFS:
+        shutil.copyfile(source_path, output_path)
+        return {
+            "enabled": False,
+            "source_peak_dbfs": source_peak_dbfs,
+            "target_peak_dbfs": DEFAULT_NARRATION_PEAK_DBFS,
+        }
+
+    target_peak = max_value * (10 ** (DEFAULT_NARRATION_PEAK_DBFS / 20))
+    scale = target_peak / peak
+    normalized = bytearray()
+    for sample in samples:
+        value = int(round(sample * scale))
+        value = max(-max_value - 1, min(max_value, value))
+        normalized.extend(value.to_bytes(params.sampwidth, "little", signed=True))
+
+    with wave.open(str(output_path), "wb") as output:
+        output.setparams(params)
+        output.writeframes(bytes(normalized))
+
+    return {
+        "enabled": True,
+        "source_peak_dbfs": source_peak_dbfs,
+        "target_peak_dbfs": DEFAULT_NARRATION_PEAK_DBFS,
+        "gain_db": round(DEFAULT_NARRATION_PEAK_DBFS - source_peak_dbfs, 3),
+    }
+
+
+def _dbfs(value: float, max_value: float) -> float:
+    if value <= 0 or max_value <= 0:
+        return -120.0
+    return round(min(0.0, 20 * math.log10(value / max_value)), 3)

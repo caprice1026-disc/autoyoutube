@@ -1,0 +1,36 @@
+{
+  "tracks": [
+    {
+      "track_id": "generated_mystery_low",
+      "file_path": "generated_mystery_low.wav",
+      "title": "Generated Mystery Low",
+      "artist": "Trivia Shorts Maker",
+      "source": "local_original",
+      "license_type": "local_safe",
+      "attribution_required": false,
+      "attribution_text": "BGM: Generated Mystery Low by Trivia Shorts Maker",
+      "mood": "mysterious",
+      "intensity": "low",
+      "duration_sec": 24.0,
+      "bpm": 72,
+      "loopable": true,
+      "allowed_platforms": ["youtube_shorts"]
+    },
+    {
+      "track_id": "No One Here Gets In Alive",
+      "file_path": "No One Here Gets In Alive - National Sweetheart.mp3",
+      "title": "No One Here Gets In Alive",
+      "artist": "National Sweetheart",
+      "source": "youtube_audio_library",
+      "license_type": "youtube_audio_library_standard",
+      "attribution_required": false,
+      "attribution_text": "Music: No One Here Gets In Alive by National Sweetheart from YouTube Audio Library",
+      "mood": "mysterious",
+      "intensity": "low",
+      "duration_sec": null,
+      "bpm": null,
+      "loopable": true,
+      "allowed_platforms": ["youtube_shorts"]
+    }
+  ]
+}

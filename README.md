@@ -13,6 +13,8 @@ YouTube Shorts向けの雑学ショート動画を、ローカル環境で半自
 - AivisSpeech API連携、またはdry-run無音WAV生成
 - WAVの実測時間に基づく字幕タイミング生成
 - ローカルBGM manifestのimport、条件選定、FFmpegでのBGMミックス
+- Pexels素材とBGMのcredits生成
+- `evaluate-render` による `quality_report.json` 生成
 - ローカル映像素材manifestのimport、条件選定、FFmpeg背景動画化
 - Pexels APIの疎通確認、動画検索、download、SQLite素材キャッシュ登録
 - FFmpegによる 1080x1920 / H.264 / AAC のMP4生成
@@ -62,6 +64,7 @@ Windowsで `permission denied while trying to connect to the docker API at npipe
 .\.venv\Scripts\python.exe -m src.main list-assets
 .\.venv\Scripts\python.exe -m src.main render projects\trivia_submarine_black_001\project.youtube.json --video-mode ffmpeg --ffmpeg-path "C:\path\to\ffmpeg.exe"
 .\.venv\Scripts\python.exe -m src.main validate-render renders\trivia_submarine_black_001\rendered.youtube.json
+.\.venv\Scripts\python.exe -m src.main evaluate-render renders\trivia_submarine_black_001\rendered.youtube.json
 ```
 
 AivisSpeechを使う場合:
@@ -107,30 +110,39 @@ $env:AIVIS_SPEECH_BASE_URL = "http://127.0.0.1:10101"
 
 ## BGM manifest
 
-`import-bgm` は以下のようなJSONを読みます。音源ファイルはmanifestからの相対パス、または絶対パスで指定できます。
+`import-bgm` は以下のようなJSONを読みます。音源ファイルはmanifestからの相対パス、または絶対パスで指定できます。BGMファイル本体はGit管理しません。YouTube Studio Audio Library由来のBGMは `assets/bgm/` 配下へ置き、manifestの `source` を `youtube_audio_library` にします。
 
 ```json
 {
   "tracks": [
     {
-      "track_id": "generated_mystery_low",
-      "file_path": "generated_mystery_low.wav",
-      "title": "Generated Mystery Low",
-      "artist": "Trivia Shorts Maker",
-      "source": "local_original",
-      "license_type": "local_safe",
+      "track_id": "No One Here Gets In Alive",
+      "file_path": "No One Here Gets In Alive - National Sweetheart.mp3",
+      "title": "No One Here Gets In Alive",
+      "artist": "National Sweetheart",
+      "source": "youtube_audio_library",
+      "license_type": "youtube_audio_library_standard",
       "attribution_required": false,
-      "attribution_text": "BGM: Generated Mystery Low by Trivia Shorts Maker",
+      "attribution_text": "Music: No One Here Gets In Alive by National Sweetheart from YouTube Audio Library",
       "mood": "mysterious",
       "intensity": "low",
-      "duration_sec": 24.0,
-      "bpm": 72,
+      "duration_sec": null,
+      "bpm": null,
       "loopable": true,
       "allowed_platforms": ["youtube_shorts"]
     }
   ]
 }
 ```
+
+登録と確認:
+
+```powershell
+.\.venv\Scripts\python.exe -m src.main import-bgm assets\bgm\bgm_manifest.json
+.\.venv\Scripts\python.exe -m src.main list-bgm
+```
+
+sample projectでは `bgm.allow_sources` を `["youtube_audio_library"]` にしているため、同じ `mood=mysterious` / `intensity=low` のローカルBGMがあっても、YouTube Audio Library側の曲を選びます。
 
 ## 映像素材manifest
 
@@ -215,8 +227,18 @@ AivisSpeech Engineのモデルやログは `data/aivis-engine/` に保存され�
 - `audio/final_audio.wav`
 - `logs/ffmpeg_command.txt`
 - `logs/ffmpeg_stderr.log`
+- `quality_report.json` (`evaluate-render` 実行時)
 
-`renders/`, `data/*.db`, `data/aivis-engine/`, `assets/bgm/`, `assets/pexels/`, `assets/fonts/`, `assets/local_media/` は生成物またはローカル素材置き場として `.gitignore` 対象です。
+`renders/`, `data/*.db`, `data/aivis-engine/`, `assets/pexels/`, `assets/fonts/`, `assets/local_media/` は生成物またはローカル素材置き場として `.gitignore` 対象です。`assets/bgm/bgm_manifest.json` は追跡対象ですが、BGM音源ファイル本体は `.gitignore` 対象です。
+
+## 品質検査
+
+`evaluate-render` は、生成済みの `rendered.youtube.json` と実ファイルを検査し、同じrenderディレクトリに `quality_report.json` を出力します。初期チェックでは、必須ファイル欠落、空のoutput.mp4、BGM credit漏れ、Pexels credit漏れ、字幕長、字幕表示時間、BGM音量、manual review必須状態を見ます。
+
+```powershell
+.\.venv\Scripts\python.exe -m src.main evaluate-render renders\trivia_submarine_black_001\rendered.youtube.json
+Get-Content renders\trivia_submarine_black_001\quality_report.json
+```
 
 ## 検証
 
@@ -226,4 +248,4 @@ AivisSpeech Engineのモデルやログは `data/aivis-engine/` に保存され�
 .\.venv\Scripts\python.exe -m ruff format . --check
 ```
 
-現在のテストは、JSON検証、CLIエラー表示、AivisSpeechクライアント、音声結合、BGM登録/選定、ローカル映像素材登録/選定、Pexels APIクライアント、Docker Compose設定、FFmpegコマンド生成、レンダーパイプラインを対象にしています。
+現在のテストは、JSON検証、CLIエラー表示、AivisSpeechクライアント、音声結合、BGM登録/選定、ローカル映像素材登録/選定、Pexels APIクライアント、Docker Compose設定、FFmpegコマンド生成、レンダーパイプライン、DB保存、quality evaluatorを対象にしています。
