@@ -205,12 +205,12 @@ def test_render_project_saves_each_render_in_timestamped_title_directory(
 
     assert rendered_path.name == "rendered.youtube.json"
     assert rendered_path.parent.parent == tmp_path / "renders"
-    assert re.fullmatch(
-        r"\d{12}-Deep sea facts", rendered_path.parent.name
-    )
+    assert re.fullmatch(r"\d{12}-Deep sea facts", rendered_path.parent.name)
     rendered = json.loads(rendered_path.read_text(encoding="utf-8"))
-    assert rendered["output"]["rendered_json_path"].replace("\\", "/").endswith(
-        f"{rendered_path.parent.name}/rendered.youtube.json"
+    assert (
+        rendered["output"]["rendered_json_path"]
+        .replace("\\", "/")
+        .endswith(f"{rendered_path.parent.name}/rendered.youtube.json")
     )
 
 
@@ -404,7 +404,7 @@ def test_render_project_selects_local_media_and_passes_visuals_to_video_renderer
     assert renderer.calls[0]["visuals"][0]["asset_id"] == "ocean_portrait"
 
 
-def test_render_project_avoids_consecutive_same_media_asset_when_possible(
+def test_render_project_avoids_reusing_same_media_asset_in_one_render(
     tmp_path: Path, monkeypatch
 ) -> None:
     project = _project()
@@ -461,11 +461,11 @@ def test_render_project_avoids_consecutive_same_media_asset_when_possible(
     rendered_path = render_project(project_path, video_renderer=renderer)
 
     rendered = json.loads(rendered_path.read_text(encoding="utf-8"))
-    asset_ids = [visual["asset_id"] for visual in rendered["visuals"]]
-    assert asset_ids == ["ocean_a", "ocean_b", "ocean_a"]
+    asset_ids = [visual.get("asset_id") for visual in rendered["visuals"]]
+    assert asset_ids == ["ocean_a", "ocean_b", None]
 
 
-def test_render_project_reuses_available_media_when_query_has_no_match(
+def test_render_project_does_not_reuse_available_media_when_query_has_no_match(
     tmp_path: Path, monkeypatch
 ) -> None:
     project = _project()
@@ -506,12 +506,13 @@ def test_render_project_reuses_available_media_when_query_has_no_match(
     rendered = json.loads(rendered_path.read_text(encoding="utf-8"))
     fallback_visual = rendered["visuals"][1]
     assert fallback_visual["visual_query"] == "seismic graph"
-    assert fallback_visual["asset_id"] == "ocean_portrait"
-    assert fallback_visual["local_file_path"] == str(media_path)
-    assert all(
-        Path(visual["local_file_path"]).is_file() for visual in rendered["visuals"]
+    assert fallback_visual.get("asset_id") is None
+    assert (
+        fallback_visual["local_file_path"]
+        .replace("\\", "/")
+        .endswith("/video/material_002.mp4")
     )
-    assert renderer.calls[0]["visuals"][1]["asset_id"] == "ocean_portrait"
+    assert renderer.calls[0]["visuals"][1].get("asset_id") is None
 
 
 def test_render_project_wraps_long_subtitle_lines(tmp_path: Path, monkeypatch) -> None:

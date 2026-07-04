@@ -18,6 +18,7 @@ YouTube Shorts向けの雑学ショート動画を、ローカル環境で半自
 - ローカル映像素材manifestのimport、条件選定、FFmpeg背景動画化
 - 複数映像素材をscriptタイミングに合わせてつなぐFFmpegタイムライン合成
 - Pexels APIの疎通確認、動画検索、download、SQLite素材キャッシュ登録
+- 同一render内で同じPexels/登録映像素材を再利用しない素材選定
 - FFmpegによる 1080x1920 / H.264 / AAC のMP4生成
 - `YYYYMMDDHHMM-タイトル` 形式のrenderディレクトリ出力
 - YouTube Data APIへのprivate upload CLI
@@ -62,7 +63,7 @@ Windowsで `permission denied while trying to connect to the docker API at npipe
 .\.venv\Scripts\python.exe -m src.main list-bgm
 .\.venv\Scripts\python.exe -m src.main import-media assets\local_media\media_manifest.json
 .\.venv\Scripts\python.exe -m src.main check-pexels "deep ocean" --per-page 1
-.\.venv\Scripts\python.exe -m src.main fetch-pexels projects\trivia_submarine_black_001\project.youtube.json --per-query 1 --max-downloads 1
+.\.venv\Scripts\python.exe -m src.main fetch-visuals projects\trivia_submarine_black_001\project.youtube.json --per-query 3 --max-downloads 18
 .\.venv\Scripts\python.exe -m src.main list-assets
 .\.venv\Scripts\python.exe -m src.main render projects\trivia_submarine_black_001\project.youtube.json --video-mode ffmpeg --ffmpeg-path "C:\path\to\ffmpeg.exe"
 .\.venv\Scripts\python.exe -m src.main validate-render renders\YYYYMMDDHHMM-タイトル\rendered.youtube.json
@@ -150,7 +151,7 @@ sample projectでは `bgm.allow_sources` を `["youtube_audio_library"]` にし�
 
 ## 映像素材manifest
 
-`import-media` はローカル動画ファイルをDBへ登録します。ファイルパスはmanifestからの相対パス、または絶対パスで指定できます。`render` は `project.youtube.json` の `script[].visual_query` に近い素材を文ごとに選び、2件以上の有効素材がある場合はFFmpegで区間ごとにtrim/scale/cropして連結します。1件だけの場合は単一背景としてループし、0件の場合は単色背景へフォールバックします。
+`import-media` はローカル動画ファイルをDBへ登録します。ファイルパスはmanifestからの相対パス、または絶対パスで指定できます。`render` は `project.youtube.json` の `script[].visual_query` に近く、まだ同じrender内で使っていない素材を文ごとに選びます。複数のvisualに有効素材が割り当てられると、FFmpegで区間ごとにtrim/scale/cropして連結します。同じrender内では同じ `asset_id` を再利用しません。候補が尽きたカットは同じ素材を使い回さず、既存の背景フォールバックに任せます。
 
 ```json
 {
@@ -183,14 +184,14 @@ Pexels APIキーは `.env` に `PEXELS_API_KEY=...` として設定します。`
 .\.venv\Scripts\python.exe -m src.main check-pexels "deep ocean" --per-page 1
 ```
 
-project JSONから `visual_strategy.primary_query`, `script[].visual_query`, `visual_strategy.fallback_queries` を集め、重複を除いて検索・download・DB登録します。
+project JSONから `visual_strategy.primary_query`, `script[].visual_query`, `visual_strategy.fallback_queries` を集め、重複を除いて検索・download・DB登録します。台本から検索語を作るときは、抽象語だけにせず、`rainy city street night`、`wet asphalt neon reflection`、`volcano eruption ash cloud` のように、目に見える対象・場所・動き・状態を英語で入れてください。繰り返しのある台本では `script[].visual_query` を少しずつ変え、同じPexels素材に偏らないようにします。
 
 ```powershell
-.\.venv\Scripts\python.exe -m src.main fetch-pexels projects\trivia_submarine_black_001\project.youtube.json --per-query 1 --max-downloads 1
+.\.venv\Scripts\python.exe -m src.main fetch-visuals projects\trivia_submarine_black_001\project.youtube.json --per-query 3 --max-downloads 18
 .\.venv\Scripts\python.exe -m src.main list-assets
 ```
 
-download先は `assets/pexels/` です。登録後のrenderは、既存の `media_assets` 選定経路からPexels素材を選びます。API制限やネットワーク失敗でrender全体が止まることを避けるため、現時点ではrender中に自動検索せず、先に `fetch-pexels` でキャッシュしておく運用です。
+download先は `assets/pexels/` です。`fetch-visuals` は `assets/pexels/<project_id>.visual_plan.json` も出力します。`selected_asset_id` が同じ素材に偏る場合は、`script[].visual_query` や `fallback_queries` を調整し、`--per-query` / `--max-downloads` を増やしてから再取得してください。登録後のrenderは、既存の `media_assets` 選定経路からPexels素材を選びます。API制限やネットワーク失敗でrender全体が止まることを避けるため、現時点ではrender中に自動検索せず、先に `fetch-visuals` または `fetch-pexels` でキャッシュしておく運用です。
 
 ## YouTube private upload
 
@@ -248,12 +249,21 @@ AivisSpeech Engineのモデルやログは `data/aivis-engine/` に保存され�
 
 ## 品質検査
 
-`evaluate-render` は、生成済みの `rendered.youtube.json` と実ファイルを検査し、同じrenderディレクトリに `quality_report.json` を出力します。初期チェックでは、必須ファイル欠落、空のoutput.mp4、BGM credit漏れ、Pexels credit漏れ、字幕長、字幕表示時間、BGM音量を見ます。公開可否のレビューは、`upload-youtube` で private 投稿した後にYouTube上で行う前提です。
+`evaluate-render` は、生成済みの `rendered.youtube.json` と実ファイルを検査し、同じrenderディレクトリに `quality_report.json` を出力します。初期チェックでは、必須ファイル欠落、空のoutput.mp4、BGM credit漏れ、Pexels credit漏れ、字幕長、字幕表示時間、BGM音量、素材解像度、同一素材の連続利用、同一render内での同一 `asset_id` 再利用を見ます。公開可否のレビューは、`upload-youtube` で private 投稿した後にYouTube上で行う前提です。
 
 ```powershell
 .\.venv\Scripts\python.exe -m src.main evaluate-render renders\YYYYMMDDHHMM-タイトル\rendered.youtube.json
 Get-Content renders\YYYYMMDDHHMM-タイトル\quality_report.json
 ```
+
+同じ素材が一つの動画内で再利用されていないかを直接見る場合:
+
+```powershell
+$rendered = Get-Content renders\YYYYMMDDHHMM-タイトル\rendered.youtube.json -Raw | ConvertFrom-Json
+$rendered.visuals | Where-Object asset_id | Group-Object asset_id | Where-Object Count -gt 1
+```
+
+出力があれば、`script[].visual_query` / `fallback_queries` を見直し、Pexels候補を増やして再レンダーしてください。
 
 ## 検証
 

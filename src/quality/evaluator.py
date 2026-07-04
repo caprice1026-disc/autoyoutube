@@ -251,8 +251,13 @@ def _video_checks(
                 )
             )
 
-    duration_for_policy = video_duration if video_duration is not None else rendered_duration
-    if duration_for_policy is not None and duration_for_policy > MAX_SHORTS_DURATION_SEC:
+    duration_for_policy = (
+        video_duration if video_duration is not None else rendered_duration
+    )
+    if (
+        duration_for_policy is not None
+        and duration_for_policy > MAX_SHORTS_DURATION_SEC
+    ):
         checks.append(
             _check(
                 "VIDEO_DURATION_TOO_LONG",
@@ -288,7 +293,9 @@ def _video_checks(
     return checks
 
 
-def _audio_checks(rendered: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+def _audio_checks(
+    rendered: dict[str, Any],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     checks: list[dict[str, Any]] = []
     metrics: dict[str, Any] = {}
     final_audio_path_text = rendered.get("audio", {}).get("final_audio_path")
@@ -508,7 +515,10 @@ def _subtitle_checks(rendered: dict[str, Any]) -> list[dict[str, Any]]:
                     f"subtitles.items[{index}]",
                     f"字幕が{len(lines)}行で、推奨上限{MAX_SUBTITLE_LINES}行を超えています。",
                     "字幕の文分割や短文化を検討してください。",
-                    metrics={"line_count": len(lines), "max_allowed_lines": MAX_SUBTITLE_LINES},
+                    metrics={
+                        "line_count": len(lines),
+                        "max_allowed_lines": MAX_SUBTITLE_LINES,
+                    },
                     auto_fixable=True,
                     codex_hint="Split dense subtitles into shorter script items or reduce wrapping pressure.",
                 )
@@ -541,7 +551,10 @@ def _subtitle_checks(rendered: dict[str, Any]) -> list[dict[str, Any]]:
                     f"subtitles.items[{index}]",
                     f"字幕表示時間が{duration:.2f}秒で、推奨値{MIN_SUBTITLE_DURATION_SEC:.2f}秒未満です。",
                     "文の分割や読み上げ速度を調整してください。",
-                    metrics={"duration_sec": round(duration, 3), "min_duration_sec": MIN_SUBTITLE_DURATION_SEC},
+                    metrics={
+                        "duration_sec": round(duration, 3),
+                        "min_duration_sec": MIN_SUBTITLE_DURATION_SEC,
+                    },
                     auto_fixable=True,
                     codex_hint="Avoid very short subtitle windows or merge ultra-short script items with adjacent lines.",
                 )
@@ -562,7 +575,10 @@ def _bgm_checks(rendered: dict[str, Any]) -> list[dict[str, Any]]:
                 "bgm.volume_db",
                 f"BGM音量が{volume_db}dBで、推奨上限{MAX_BGM_VOLUME_DB}dBより大きいです。",
                 "ナレーションを優先し、volume_dbを下げてください。",
-                metrics={"volume_db": float(volume_db), "max_allowed_volume_db": MAX_BGM_VOLUME_DB},
+                metrics={
+                    "volume_db": float(volume_db),
+                    "max_allowed_volume_db": MAX_BGM_VOLUME_DB,
+                },
                 auto_fixable=True,
                 codex_hint="Lower project.bgm.volume_db or default BGM volume.",
             )
@@ -578,7 +594,9 @@ def _ffmpeg_checks(rendered: dict[str, Any]) -> list[dict[str, Any]]:
     stderr_lower = stderr.lower()
     checks: list[dict[str, Any]] = []
     warning_patterns = ["warning", "deprecated", "non-monotonous"]
-    matched_warnings = [pattern for pattern in warning_patterns if pattern in stderr_lower]
+    matched_warnings = [
+        pattern for pattern in warning_patterns if pattern in stderr_lower
+    ]
     if matched_warnings:
         checks.append(
             _check(
@@ -592,7 +610,9 @@ def _ffmpeg_checks(rendered: dict[str, Any]) -> list[dict[str, Any]]:
             )
         )
 
-    font_name = str(rendered.get("subtitles", {}).get("style", {}).get("font_name") or "")
+    font_name = str(
+        rendered.get("subtitles", {}).get("style", {}).get("font_name") or ""
+    )
     fallback_lines = _font_fallback_lines(stderr, font_name)
     if fallback_lines:
         checks.append(
@@ -613,10 +633,15 @@ def _ffmpeg_checks(rendered: dict[str, Any]) -> list[dict[str, Any]]:
 def _visual_checks(rendered: dict[str, Any]) -> list[dict[str, Any]]:
     checks: list[dict[str, Any]] = []
     previous_asset_id: str | None = None
+    seen_asset_indices: dict[str, int] = {}
     for index, visual in enumerate(rendered.get("visuals", [])):
         width = _int_or_none(visual.get("original_width"))
         height = _int_or_none(visual.get("original_height"))
-        if width is not None and height is not None and min(width, height) < MIN_SOURCE_SHORT_EDGE:
+        if (
+            width is not None
+            and height is not None
+            and min(width, height) < MIN_SOURCE_SHORT_EDGE
+        ):
             checks.append(
                 _check(
                     "SOURCE_RESOLUTION_TOO_LOW",
@@ -634,6 +659,27 @@ def _visual_checks(rendered: dict[str, Any]) -> list[dict[str, Any]]:
                 )
             )
         asset_id = visual.get("asset_id")
+        if asset_id:
+            asset_key = str(asset_id)
+            first_index = seen_asset_indices.get(asset_key)
+            if first_index is not None and previous_asset_id != asset_key:
+                checks.append(
+                    _check(
+                        "SAME_ASSET_REUSED",
+                        "warning",
+                        f"visuals[{index}]",
+                        f"The same asset_id={asset_key} is reused within this render.",
+                        "Use more varied visual_query values or fetch additional candidate assets before rerendering.",
+                        metrics={
+                            "asset_id": asset_key,
+                            "first_index": first_index,
+                            "current_index": index,
+                        },
+                        auto_fixable=True,
+                        codex_hint="Update media selection to exclude any asset_id already used in the current render.",
+                    )
+                )
+            seen_asset_indices.setdefault(asset_key, index)
         if asset_id and previous_asset_id == asset_id:
             checks.append(
                 _check(
@@ -657,11 +703,20 @@ def _metrics(
     audio_metrics: dict[str, Any],
 ) -> dict[str, Any]:
     subtitles = rendered.get("subtitles", {}).get("items", [])
-    subtitle_lengths = [_max_subtitle_line_chars(str(item.get("text") or "")) for item in subtitles]
-    subtitle_line_counts = [len(_subtitle_lines(str(item.get("text") or ""))) for item in subtitles]
-    subtitle_durations = [float(item["end_sec"]) - float(item["start_sec"]) for item in subtitles]
+    subtitle_lengths = [
+        _max_subtitle_line_chars(str(item.get("text") or "")) for item in subtitles
+    ]
+    subtitle_line_counts = [
+        len(_subtitle_lines(str(item.get("text") or ""))) for item in subtitles
+    ]
+    subtitle_durations = [
+        float(item["end_sec"]) - float(item["start_sec"]) for item in subtitles
+    ]
     subtitle_cps = [
-        _subtitle_cps(str(item.get("text") or ""), float(item["end_sec"]) - float(item["start_sec"]))
+        _subtitle_cps(
+            str(item.get("text") or ""),
+            float(item["end_sec"]) - float(item["start_sec"]),
+        )
         for item in subtitles
     ]
     resolution = rendered["target"]["resolution"]
@@ -697,7 +752,9 @@ def _metrics(
             }
         )
         if rendered_duration is not None and video_duration is not None:
-            metrics["duration_diff_sec"] = round(abs(video_duration - rendered_duration), 3)
+            metrics["duration_diff_sec"] = round(
+                abs(video_duration - rendered_duration), 3
+            )
     return metrics
 
 
@@ -708,7 +765,9 @@ def _artifacts(render_dir: Path) -> dict[str, Any]:
         for name in ("opening.png", "middle.png", "ending.png")
         if (inspect_dir / name).is_file()
     ]
-    subtitle_frame_paths = sorted(inspect_dir.glob("subtitle_*.png")) if inspect_dir.is_dir() else []
+    subtitle_frame_paths = (
+        sorted(inspect_dir.glob("subtitle_*.png")) if inspect_dir.is_dir() else []
+    )
     timeline_path = inspect_dir / "timeline.png"
     return {
         "inspect_dir": _rel(inspect_dir) if inspect_dir.is_dir() else None,
@@ -793,7 +852,9 @@ def _subtitle_cps(text: str, duration: float) -> float:
     return round(_subtitle_reading_chars(text) / duration, 3)
 
 
-def _read_wav_stats(path: Path, opening_sec: float = OPENING_SILENCE_SEC) -> dict[str, Any]:
+def _read_wav_stats(
+    path: Path, opening_sec: float = OPENING_SILENCE_SEC
+) -> dict[str, Any]:
     try:
         with wave.open(str(path), "rb") as wav:
             channels = wav.getnchannels()
@@ -855,7 +916,9 @@ def _font_fallback_lines(stderr: str, font_name: str) -> list[str]:
         if "fontselect:" not in lower or "->" not in line:
             continue
         before, after = line.split("->", 1)
-        if requested in _normalize_font_name(before) and requested not in _normalize_font_name(after):
+        if requested in _normalize_font_name(
+            before
+        ) and requested not in _normalize_font_name(after):
             lines.append(line)
     return lines
 

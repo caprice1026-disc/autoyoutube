@@ -63,8 +63,11 @@ FFMPEG_WARNING_DETECTED
 FONT_FALLBACK_DETECTED
 SOURCE_RESOLUTION_TOO_LOW
 SAME_ASSET_CONSECUTIVE
+SAME_ASSET_REUSED
 MANUAL_REVIEW_DISABLED
 ```
+
+`SAME_ASSET_CONSECUTIVE` means the same registered visual asset appears in adjacent visual slots. `SAME_ASSET_REUSED` means the same `asset_id` appears again later in the same render. Both should be treated as repetition risk: improve `script[].visual_query`, fetch more Pexels candidates, and rerender before review.
 
 ## Artifacts
 

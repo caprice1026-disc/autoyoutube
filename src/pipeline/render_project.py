@@ -522,56 +522,57 @@ def _select_render_visuals(
         return visuals
 
     selected_visuals: list[dict[str, Any]] = []
-    previous_asset_id: str | None = None
+    used_asset_ids: set[str] = set()
     for visual in visuals:
-        asset = _select_media_asset_avoiding_previous(
+        asset = _select_unused_media_asset(
             visual,
             project["visual_strategy"],
             assets,
-            previous_asset_id,
+            used_asset_ids,
         )
         if asset is None:
             asset = _select_fallback_media_asset(
                 project["visual_strategy"],
                 assets,
-                previous_asset_id,
+                used_asset_ids,
             )
         selected_visual = (
             _build_visual_from_asset(visual, asset) if asset is not None else visual
         )
         selected_visuals.append(selected_visual)
-        previous_asset_id = selected_visual.get("asset_id")
+        if selected_asset_id := selected_visual.get("asset_id"):
+            used_asset_ids.add(str(selected_asset_id))
     return selected_visuals
 
 
-def _select_media_asset_avoiding_previous(
+def _select_unused_media_asset(
     visual: dict[str, Any],
     visual_strategy: dict[str, Any],
     assets: list[MediaAsset],
-    previous_asset_id: str | None,
+    used_asset_ids: set[str],
 ) -> MediaAsset | None:
     script_item = {"visual_query": visual["visual_query"]}
-    selected = select_media_asset(script_item, visual_strategy, assets)
-    if selected is None or selected.asset_id != previous_asset_id:
-        return selected
-    alternatives = [asset for asset in assets if asset.asset_id != previous_asset_id]
-    return select_media_asset(script_item, visual_strategy, alternatives) or selected
+    candidates = [asset for asset in assets if asset.asset_id not in used_asset_ids]
+    if not candidates:
+        return None
+    return select_media_asset(script_item, visual_strategy, candidates)
 
 
 def _select_fallback_media_asset(
     visual_strategy: dict[str, Any],
     assets: list[MediaAsset],
-    previous_asset_id: str | None,
+    used_asset_ids: set[str],
 ) -> MediaAsset | None:
-    candidates = _allowed_media_assets(visual_strategy, assets)
+    candidates = [
+        asset
+        for asset in _allowed_media_assets(visual_strategy, assets)
+        if asset.asset_id not in used_asset_ids
+    ]
     if not candidates:
         return None
 
-    non_consecutive = [
-        asset for asset in candidates if asset.asset_id != previous_asset_id
-    ]
     return sorted(
-        non_consecutive or candidates,
+        candidates,
         key=lambda asset: _media_asset_sort_key(asset, visual_strategy),
     )[0]
 

@@ -14,6 +14,26 @@ visual_strategy.fallback_queries[]
 
 Prefer English search queries for Pexels.
 
+Derive those queries from the script before running `fetch-visuals`:
+
+```text
+- Use one concrete English visual_query per script item.
+- Include visible nouns, locations, actions, and states.
+- Avoid abstract-only queries such as "problem", "gas", or "mystery".
+- Vary repeated script concepts so each cut can get a different asset.
+- Put the strongest overall scene in visual_strategy.primary_query.
+- Put 3-8 broader but still concrete searches in visual_strategy.fallback_queries[].
+```
+
+Examples:
+
+```text
+rainy city street night
+wet asphalt neon reflection
+volcano eruption ash cloud
+molten lava close up
+```
+
 ## Fetch command
 
 ```powershell
@@ -46,6 +66,8 @@ queries[].candidates[].reasons
 queries[].candidates[].local_file_path
 queries[].candidates[].pexels_url
 ```
+
+If multiple `queries[].selected_asset_id` values point to the same asset for a single project, improve the repeated `script[].visual_query` values and fetch more candidates before rendering.
 
 ## Candidate score interpretation
 
@@ -84,14 +106,26 @@ renders/<project_id>/video_segments/segment_002.mp4
 renders/<project_id>/video/background_timeline.mp4
 ```
 
+Within one render, the same `asset_id` should not appear more than once in `rendered.youtube.json` `visuals[]`. If there are not enough unused registered assets, the renderer leaves that visual without an `asset_id` and lets the existing FFmpeg fallback path handle the background instead of repeating the same Pexels footage.
+
+Duplicate check:
+
+```powershell
+$rendered = Get-Content renders\<render_dir>\rendered.youtube.json -Raw | ConvertFrom-Json
+$rendered.visuals | Where-Object asset_id | Group-Object asset_id | Where-Object Count -gt 1
+```
+
+No output means no registered asset was reused in that render.
+
 ## Common improvements
 
-If `SAME_ASSET_CONSECUTIVE` appears:
+If `SAME_ASSET_CONSECUTIVE` or `SAME_ASSET_REUSED` appears:
 
 ```text
 - increase fetch-visuals --per-query
 - adjust repeated visual_query values
-- improve selector logic to avoid immediate reuse
+- add concrete fallback_queries
+- improve selector logic to avoid reuse within the whole render
 ```
 
 If `SOURCE_RESOLUTION_TOO_LOW` appears:
