@@ -34,7 +34,7 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 
 ## Outcomes & Retrospective
 
-実装完了後に記録する。
+Phase 5では、`skills/autoyoutube-shorts/` にSkill entrypoint、UI metadata、参照ドキュメントを追加した。Skillは実行コードを持たず、既存CLIの順序、品質レポートの読み方、視覚検査、Pexels/visuals、Codex修正ループを固定する構成にした。最低限の構造テストも追加した。ローカル実行環境がないため、pytestとruffの実行はPRレビュー側で行う。
 
 ## Context and Orientation
 
@@ -70,7 +70,7 @@ Skillファイルはドキュメント中心であり、再実行による副作
 
 ## Artifacts and Notes
 
-作業完了後、変更ファイルとPR番号を記録する。
+変更対象は、`skills/autoyoutube-shorts/`、`.agent/20260704_autoyoutube_shorts_skill.md`、`tests/test_skill_structure.py` である。
 
 ## Interfaces and Dependencies
 
