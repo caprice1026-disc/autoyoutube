@@ -18,6 +18,7 @@ from src.env import load_dotenv
 from src.errors import AppError
 from src.media.library import load_media_manifest
 from src.media.pexels_client import PexelsClient
+from src.media.visual_fetcher import fetch_visuals_for_project
 from src.pipeline.render_project import render_project
 from src.quality.evaluator import evaluate_render
 from src.quality.inspector import inspect_render
@@ -66,6 +67,17 @@ def main() -> int:
     fp.add_argument("--max-downloads", type=int)
     fp.add_argument("--orientation", default="portrait")
     fp.add_argument("--size", default="small")
+    fv = sub.add_parser(
+        "fetch-visuals",
+        help="fetch and score Pexels visual candidates for a project JSON",
+    )
+    fv.add_argument("project_path")
+    fv.add_argument("--output-dir", default="assets/pexels")
+    fv.add_argument("--per-query", type=int, default=3)
+    fv.add_argument("--max-downloads", type=int)
+    fv.add_argument("--orientation", default="portrait")
+    fv.add_argument("--size", default="small")
+    fv.add_argument("--plan-path")
     rr = sub.add_parser("render", help="render project assets")
     rr.add_argument("path")
     rr.add_argument("--voice-mode", choices=["dry-run", "aivis"], default="dry-run")
@@ -111,6 +123,16 @@ def main() -> int:
                 max_downloads=args.max_downloads,
                 orientation=args.orientation,
                 size=args.size,
+            )
+        if args.command == "fetch-visuals":
+            return _fetch_visuals(
+                Path(args.project_path),
+                output_dir=Path(args.output_dir),
+                per_query=args.per_query,
+                max_downloads=args.max_downloads,
+                orientation=args.orientation,
+                size=args.size,
+                plan_path=Path(args.plan_path) if args.plan_path else None,
             )
         if args.command == "render":
             voice_service = (
@@ -171,6 +193,8 @@ def _inspect_render(rendered_path: Path, ffmpeg_path: str | None) -> int:
     print(f"Inspect artifacts written: {report['inspect_dir']}")
     print(f"Summary screenshots: {len(report['screenshot_paths'])}")
     print(f"Subtitle frames: {len(report['subtitle_frame_paths'])}")
+    if report.get("timeline_png_path"):
+        print(f"Timeline PNG: {report['timeline_png_path']}")
     return 0
 
 
@@ -275,6 +299,38 @@ def _fetch_pexels(
     print(f"Fetched Pexels assets: {len(assets)}")
     for asset in assets:
         print(f"{asset.asset_id}\t{asset.query}\t{asset.local_file_path}")
+    return 0
+
+
+def _fetch_visuals(
+    project_path: Path,
+    *,
+    output_dir: Path,
+    per_query: int,
+    max_downloads: int | None,
+    orientation: str | None,
+    size: str | None,
+    plan_path: Path | None,
+) -> int:
+    client = PexelsClient()
+    result = fetch_visuals_for_project(
+        project_path,
+        client=client,
+        output_dir=output_dir,
+        per_query=per_query,
+        max_downloads=max_downloads,
+        orientation=orientation,
+        size=size,
+        plan_path=plan_path,
+    )
+    init_db()
+    with connect() as connection:
+        upsert_media_assets(connection, result.assets)
+    print(f"Fetched visual assets: {len(result.assets)}")
+    print(f"Visual plan written: {result.plan_path}")
+    for query in result.plan["queries"]:
+        selected = query.get("selected_asset_id") or "none"
+        print(f"{query['query']}\tcandidates={query['candidate_count']}\tselected={selected}")
     return 0
 
 
