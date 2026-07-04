@@ -19,6 +19,9 @@ def _rendered(render_dir: Path) -> dict:
             "resolution": {"width": 1080, "height": 1920},
             "fps": 30,
         },
+        "audio": {
+            "final_audio_path": str(render_dir / "audio" / "final_audio.wav"),
+        },
         "subtitles": {
             "items": [
                 {"index": 1, "text": "最初の字幕", "start_sec": 0.0, "end_sec": 2.0},
@@ -37,7 +40,7 @@ def _write_wav(path: Path, *, duration_sec: float = 1.0) -> None:
         wav.writeframes(b"\x01\x00" * int(44100 * duration_sec))
 
 
-def test_inspect_render_extracts_summary_and_subtitle_frames(
+def test_inspect_render_extracts_summary_subtitle_and_timeline_frames(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -46,6 +49,7 @@ def test_inspect_render_extracts_summary_and_subtitle_frames(
     render_dir = tmp_path / "render"
     render_dir.mkdir()
     (render_dir / "output.mp4").write_bytes(b"fake mp4")
+    _write_wav(render_dir / "audio" / "final_audio.wav", duration_sec=6.0)
     rendered_path = render_dir / "rendered.youtube.json"
     rendered_path.write_text(json.dumps(_rendered(render_dir)), encoding="utf-8")
     ffmpeg_path = render_dir / "ffmpeg.exe"
@@ -63,11 +67,15 @@ def test_inspect_render_extracts_summary_and_subtitle_frames(
     assert report["project_id"] == "inspect_project"
     assert len(report["screenshot_paths"]) == 3
     assert len(report["subtitle_frame_paths"]) == 2
+    assert report["timeline_png_path"].endswith("timeline.png")
     assert (render_dir / "inspect" / "opening.png").is_file()
     assert (render_dir / "inspect" / "middle.png").is_file()
     assert (render_dir / "inspect" / "ending.png").is_file()
     assert (render_dir / "inspect" / "subtitle_001.png").is_file()
     assert (render_dir / "inspect" / "subtitle_002.png").is_file()
+    assert (render_dir / "inspect" / "timeline.png").is_file()
+    assert (render_dir / "inspect" / "timeline_parts" / "waveform.png").is_file()
+    assert (render_dir / "inspect" / "timeline_parts" / "subtitles.png").is_file()
     written = json.loads((render_dir / "inspect" / "inspect_report.json").read_text())
     assert written == report
 
@@ -89,6 +97,7 @@ def test_evaluate_render_includes_existing_inspect_artifacts(tmp_path: Path) -> 
     (render_dir / "inspect" / "middle.png").write_bytes(b"png")
     (render_dir / "inspect" / "ending.png").write_bytes(b"png")
     (render_dir / "inspect" / "subtitle_001.png").write_bytes(b"png")
+    (render_dir / "inspect" / "timeline.png").write_bytes(b"png")
     _write_wav(render_dir / "audio" / "final_audio.wav")
 
     rendered = {
@@ -106,7 +115,10 @@ def test_evaluate_render_includes_existing_inspect_artifacts(tmp_path: Path) -> 
             "fps": 30,
         },
         "voice": {"sample_rate": 44100},
-        "audio": {"final_audio_path": str(render_dir / "audio" / "final_audio.wav"), "narration_files": []},
+        "audio": {
+            "final_audio_path": str(render_dir / "audio" / "final_audio.wav"),
+            "narration_files": [],
+        },
         "bgm": {"enabled": False},
         "visuals": [
             {
@@ -140,4 +152,4 @@ def test_evaluate_render_includes_existing_inspect_artifacts(tmp_path: Path) -> 
 
     assert len(report["artifacts"]["screenshot_paths"]) == 3
     assert len(report["artifacts"]["subtitle_frame_paths"]) == 1
-    assert report["artifacts"]["timeline_png_path"] is None
+    assert report["artifacts"]["timeline_png_path"].endswith("timeline.png")
