@@ -97,7 +97,9 @@ $env:AIVIS_SPEECH_BASE_URL = "http://127.0.0.1:10101"
 
 ## make-video 一括生成
 
-`make-video` は、ローカルに置いた `project.youtube.json` から、Pexels素材取得、動画生成、inspect、quality評価、自動改善attemptまでをまとめて実行します。YouTubeへの投稿は行わず、生成後に `upload-youtube` を別途実行します。
+`make-video` は、ローカルに置いた `project.youtube.json` から、Pexels素材取得、動画生成、inspect、quality評価、自動改善attemptまでをまとめて実行します。通常はYouTubeへ投稿せず、必要なときだけ `--upload-youtube` で private upload まで続けます。
+
+`--upload-youtube` を付けると、render が `success` または `success_with_warnings` のときに final の `rendered.youtube.json` を使って private upload まで続けます。警告付き成功でも投稿して問題ありません。
 
 入力JSONは `projects/` 配下に置きます。記入例として [projects/example_project.youtube.json](projects/example_project.youtube.json) を用意しています。このファイルをコピーして、`id`、`topic`、`title`、`hook`、`script[]`、`script[].visual_query`、`youtube` を差し替えるのが基本です。
 
@@ -111,6 +113,12 @@ WindowsでAivisSpeech未起動時のDocker起動も含めて実行:
 
 ```powershell
 .\scripts\make-video.ps1 -ProjectPath "projects\example_project.youtube.json"
+```
+
+生成後に private upload まで自動化したい場合:
+
+```powershell
+.\scripts\make-video.ps1 -ProjectPath "projects\example_project.youtube.json" -UploadYoutube
 ```
 
 Pexelsへ実際に投げる動画検索キーワードを追加する場合:
@@ -131,6 +139,8 @@ JSON内の `script[].visual_query` より、コマンド引数のキーワード
 ```
 
 `--video-keyword` / `--pexels-keyword` は複数指定できます。`--query-mode append` はJSON内の検索語に追加、`override` は引数のキーワードだけを検索・割り当てに使用、`fallback` はJSON内の検索語を優先しつつ不足時候補として引数キーワードを追加します。
+
+`--upload-youtube` を付けた場合は、render が `success` または `success_with_warnings` のときに private upload まで進みます。dry-run と `--video-mode dry-run` では upload しません。
 
 出力は `renders/YYYYMMDDHHMM-タイトル/` に作られます。
 

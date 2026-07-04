@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+from types import SimpleNamespace
 from pathlib import Path
 from typing import Any
 
@@ -532,3 +533,52 @@ def test_make_video_cli_passes_options(monkeypatch, capsys) -> None:
     assert calls[0].max_downloads == 20
     assert calls[0].plan_only is True
     assert '"ok": true' in captured.out
+
+
+def test_make_video_cli_uploads_when_flag_is_enabled_and_warnings_are_present(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    project_path = _write_project(tmp_path)
+    rendered_path = tmp_path / "renders" / "run" / "final" / "rendered.youtube.json"
+    rendered_path.parent.mkdir(parents=True, exist_ok=True)
+    rendered_path.write_text("{}", encoding="utf-8")
+    upload_calls: list[tuple[Path, str]] = []
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "tsm",
+            "make-video",
+            str(project_path),
+            "--upload-youtube",
+        ],
+    )
+
+    def fake_make_video(options: MakeVideoOptions) -> make_video_module.MakeVideoResult:
+        return make_video_module.MakeVideoResult(
+            exit_code=10,
+            status="success_with_warnings",
+            run_dir=tmp_path / "renders" / "run",
+            final_rendered_path=rendered_path,
+            plan={"ok": True},
+        )
+
+    def fake_upload_private_video(path: Path, *, privacy_status: str):
+        upload_calls.append((path, privacy_status))
+        return SimpleNamespace(
+            video_id="video123",
+            watch_url="https://www.youtube.com/watch?v=video123",
+            uploaded_at="2026-07-04T00:00:00Z",
+        )
+
+    monkeypatch.setattr(main_module, "make_video", fake_make_video)
+    monkeypatch.setattr(main_module, "upload_private_video", fake_upload_private_video)
+
+    exit_code = main_module.main()
+
+    captured = capsys.readouterr()
+    assert exit_code == 10
+    assert upload_calls == [(rendered_path, "private")]
+    assert "[make-video] uploading final render to YouTube as private" in captured.out
+    assert "YouTube upload complete: video123" in captured.out
+    assert "https://www.youtube.com/watch?v=video123" in captured.out

@@ -131,6 +131,11 @@ def main() -> int:
     mv.add_argument("--max-fix-attempts", type=int)
     mv.add_argument("--plan-only", action="store_true")
     mv.add_argument("--dry-run", action="store_true")
+    mv.add_argument(
+        "--upload-youtube",
+        action="store_true",
+        help="upload the final rendered video to YouTube as private when render succeeds",
+    )
     mv.add_argument("--skip-fetch-visuals", action="store_true")
     mv.add_argument("--skip-inspect", action="store_true")
     mv.add_argument("--skip-evaluate", action="store_true")
@@ -449,6 +454,22 @@ def _make_video(args: argparse.Namespace) -> int:
             config_path=Path(args.config_path) if args.config_path else None,
         )
     )
+    if args.upload_youtube and result.status in {"success", "success_with_warnings"}:
+        if args.dry_run or args.video_mode == "dry-run":
+            print(
+                "[make-video] upload requested but dry-run/video-mode=dry-run was selected; skipping upload"
+            )
+        elif result.final_rendered_path is None:
+            print(
+                "[make-video] upload requested but no final rendered JSON was produced."
+            )
+        else:
+            print("[make-video] uploading final render to YouTube as private")
+            upload_result = upload_private_video(
+                result.final_rendered_path, privacy_status="private"
+            )
+            print(f"YouTube upload complete: {upload_result.video_id}")
+            print(upload_result.watch_url)
     if args.plan_only:
         print(json.dumps(result.plan, ensure_ascii=False, indent=2))
     else:

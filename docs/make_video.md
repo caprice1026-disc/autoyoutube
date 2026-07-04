@@ -1,6 +1,6 @@
 # make-video
 
-`make-video` は、ローカルの `project.youtube.json` から動画生成までを一括実行するCLIです。Pexels素材取得、render、inspect、evaluate、機械的な再試行をまとめて実行し、採用結果を `renders/<YYYYMMDDHHMM-title>/final/` に保存します。
+`make-video` は、ローカルの `project.youtube.json` から動画生成までを一括実行するCLIです。Pexels素材取得、render、inspect、evaluate、機械的な再試行をまとめて実行し、採用結果を `renders/<YYYYMMDDHHMM-title>/final/` に保存します。必要なら `--upload-youtube` で final を private upload まで続けます。
 
 `make-video` 自体はYouTubeへ投稿しません。投稿は生成後に `upload-youtube` を使います。
 
@@ -43,11 +43,19 @@ projects\example_project.youtube.json
 .\.venv\Scripts\python.exe -m src.main make-video projects\example_project.youtube.json
 ```
 
+private upload まで自動で行う場合は `--upload-youtube` を付けます。`success` だけでなく `success_with_warnings` でも投稿します。`dry-run` と `--video-mode dry-run` の場合は投稿しません。
+
+```powershell
+.\.venv\Scripts\python.exe -m src.main make-video projects\example_project.youtube.json --upload-youtube
+```
+
 Windowsでは、AivisSpeech未起動時にDocker起動まで行うwrapper scriptを使えます。
 
 ```powershell
 .\scripts\make-video.ps1 -ProjectPath "projects\example_project.youtube.json"
 ```
+
+PowerShell wrapper でも `-UploadYoutube` を付けると private upload まで続けます。
 
 ## Pexels動画検索キーワードの指定
 
@@ -66,6 +74,8 @@ CLIで指定したキーワードだけをPexels検索・素材割り当てに�
 ```
 
 `--video-keyword` / `--pexels-keyword` は複数指定できます。`--query-mode append` は `project.youtube.json` の `visual_strategy.primary_query`、`script[].visual_query`、`visual_strategy.fallback_queries` にCLIキーワードを追加します。`--query-mode override` はCLIキーワードを `script[].visual_query` に割り当て直し、Pexels検索もそのキーワードだけで行います。`--query-mode fallback` はJSON内の検索語を優先し、候補不足時に使うfallback候補としてCLIキーワードを追加します。
+
+`--upload-youtube` を付けると、render が `success` または `success_with_warnings` のときに final の `rendered.youtube.json` を使って private upload まで進みます。
 
 ## 出力
 
