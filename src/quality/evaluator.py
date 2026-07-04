@@ -650,6 +650,7 @@ def _visual_checks(rendered: dict[str, Any]) -> list[dict[str, Any]]:
                     f"素材の短辺が{min(width, height)}pxで、推奨下限{MIN_SOURCE_SHORT_EDGE}px未満です。",
                     "より高解像度の素材を取得するか、別素材へ差し替えてください。",
                     metrics={
+                        "asset_id": visual.get("asset_id"),
                         "original_width": width,
                         "original_height": height,
                         "min_short_edge": MIN_SOURCE_SHORT_EDGE,

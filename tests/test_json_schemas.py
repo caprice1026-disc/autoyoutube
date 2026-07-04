@@ -11,6 +11,7 @@ RENDERED_SCHEMA_PATH = ROOT_DIR / "schemas" / "rendered.youtube.schema.json"
 SAMPLE_PROJECT_PATH = (
     ROOT_DIR / "projects" / "trivia_submarine_black_001" / "project.youtube.json"
 )
+EXAMPLE_PROJECT_PATH = ROOT_DIR / "projects" / "example_project.youtube.json"
 
 
 def _load_json(path: Path) -> dict:
@@ -32,6 +33,13 @@ def test_sample_project_matches_project_schema() -> None:
     Draft202012Validator(schema).validate(project)
 
 
+def test_example_project_matches_project_schema() -> None:
+    schema = _load_json(PROJECT_SCHEMA_PATH)
+    project = _load_json(EXAMPLE_PROJECT_PATH)
+
+    Draft202012Validator(schema).validate(project)
+
+
 def test_project_schema_rejects_unexpected_property() -> None:
     """additionalProperties=falseの制約が期待どおり余分な項目を拒否することを確認する。"""
     schema = _load_json(PROJECT_SCHEMA_PATH)
@@ -48,6 +56,14 @@ def test_project_schema_accepts_optional_voice_style_id() -> None:
     schema = _load_json(PROJECT_SCHEMA_PATH)
     project = _load_json(SAMPLE_PROJECT_PATH)
     project["voice"]["style_id"] = 888753760
+
+    Draft202012Validator(schema).validate(project)
+
+
+def test_project_schema_accepts_optional_bgm_track_id() -> None:
+    schema = _load_json(PROJECT_SCHEMA_PATH)
+    project = _load_json(SAMPLE_PROJECT_PATH)
+    project["bgm"]["track_id"] = "No One Here Gets In Alive"
 
     Draft202012Validator(schema).validate(project)
 

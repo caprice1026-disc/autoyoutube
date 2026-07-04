@@ -1,0 +1,151 @@
+{
+  "schema_version": "youtube-1.0.0",
+  "platform_profile": "youtube_shorts",
+  "id": "example_project",
+  "topic": "ショート動画入力JSONの記入例",
+  "title": "電子レンジの黒い点、実は重要です #Shorts",
+  "hook": "電子レンジの黒い点は、ただの模様ではありません。",
+  "target": {
+    "duration_sec": 45,
+    "aspect_ratio": "9:16",
+    "resolution": {
+      "width": 1080,
+      "height": 1920
+    },
+    "fps": 30,
+    "video_format": {
+      "container": "mp4",
+      "video_codec": "libx264",
+      "audio_codec": "aac",
+      "pix_fmt": "yuv420p"
+    }
+  },
+  "voice": {
+    "engine": "aivis_speech",
+    "speaker": "まお",
+    "style_id": 888753760,
+    "speed_scale": 1.08,
+    "pitch_scale": 0.0,
+    "intonation_scale": 1.0,
+    "sentence_gap_ms": 120
+  },
+  "bgm": {
+    "enabled": true,
+    "strategy": "youtube_safe_bgm",
+    "mood": "mysterious",
+    "intensity": "low",
+    "volume_db": -26,
+    "fade_in_ms": 500,
+    "fade_out_ms": 1200,
+    "allow_sources": [
+      "youtube_audio_library"
+    ],
+    "avoid": [
+      "vocal",
+      "too_loud",
+      "copyright_risky"
+    ]
+  },
+  "visual_strategy": {
+    "source_priority": [
+      "pexels",
+      "local"
+    ],
+    "preferred_orientation": "portrait",
+    "fallback": "crop_landscape_to_9_16",
+    "primary_query": "microwave oven close up",
+    "fallback_queries": [
+      "microwave door close up",
+      "kitchen appliance close up",
+      "metal mesh close up",
+      "glass reflection close up"
+    ],
+    "avoid_keywords": [
+      "logo",
+      "brand",
+      "text",
+      "cartoon",
+      "illustration"
+    ]
+  },
+  "script": [
+    {
+      "index": 1,
+      "text": "電子レンジの窓にある、黒い点。",
+      "visual_query": "microwave oven close up",
+      "estimated_duration_sec": 2.8,
+      "caption_style_hint": "normal"
+    },
+    {
+      "index": 2,
+      "text": "あれ、ただの模様だと思っていませんか？",
+      "visual_query": "microwave door close up",
+      "estimated_duration_sec": 3.4,
+      "caption_style_hint": "question"
+    },
+    {
+      "index": 3,
+      "text": "実はあれは、金属のメッシュです。",
+      "visual_query": "metal mesh close up",
+      "estimated_duration_sec": 3.2,
+      "caption_style_hint": "emphasis"
+    },
+    {
+      "index": 4,
+      "text": "小さな穴は、マイクロ波を通しにくい大きさです。",
+      "visual_query": "tiny holes metal screen",
+      "estimated_duration_sec": 4.2,
+      "caption_style_hint": "normal"
+    },
+    {
+      "index": 5,
+      "text": "でも、私たちの目に見える光は通れます。",
+      "visual_query": "light passing through glass",
+      "estimated_duration_sec": 3.8,
+      "caption_style_hint": "normal"
+    },
+    {
+      "index": 6,
+      "text": "だから中は見えて、電波は逃げにくい。",
+      "visual_query": "kitchen appliance glass reflection",
+      "estimated_duration_sec": 3.6,
+      "caption_style_hint": "punchline"
+    }
+  ],
+  "youtube": {
+    "title": "電子レンジの黒い点、実は重要です #Shorts",
+    "description": "電子レンジの窓にある黒い点の役割を、マイクロ波と光の違いから短く紹介します。#Shorts",
+    "hashtags": [
+      "#電子レンジ",
+      "#雑学",
+      "#Shorts"
+    ],
+    "tags": [
+      "電子レンジ",
+      "雑学",
+      "科学",
+      "Shorts"
+    ],
+    "category_hint": "education",
+    "privacy_status": "private",
+    "made_for_kids": false,
+    "contains_synthetic_voice": true,
+    "description_sections": {
+      "summary": "電子レンジの黒い点が、庫内を見せながらマイクロ波を閉じ込める仕組みを説明します。",
+      "credits_policy": "include_pexels_and_bgm_credits",
+      "disclaimer": "一般向けの雑学として説明しています。安全基準や構造の詳細は製品により異なる場合があります。"
+    },
+    "analytics_hypothesis": {
+      "experiment_group": "example_microwave_mesh",
+      "hypothesis": "身近な黒い点の正体を冒頭で問いかけると、最後まで視聴されやすい。",
+      "primary_metric": "average_view_percentage",
+      "secondary_metrics": [
+        "views",
+        "likes"
+      ]
+    }
+  },
+  "manual_fact_check_required": true,
+  "fact_check_notes": "topic/title/hook/script/youtubeを題材に合わせて書き換える。script[].textは字幕が見切れない短さにし、script[].visual_queryはPexels検索用の英語にする。",
+  "production_notes": "このファイルはprojects配下に置く入力例。実作成時はコピーしてid/title/topic/script/visual_query/youtubeメタデータを差し替える。BGM未指定時は既存のデフォルト選定を使う。"
+}

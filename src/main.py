@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import traceback
 from pathlib import Path
@@ -19,6 +20,7 @@ from src.errors import AppError
 from src.media.library import load_media_manifest
 from src.media.pexels_client import PexelsClient
 from src.media.visual_fetcher import fetch_visuals_for_project
+from src.pipeline.make_video import MakeVideoOptions, make_video
 from src.pipeline.render_project import render_project
 from src.quality.evaluator import evaluate_render
 from src.quality.inspector import inspect_render
@@ -86,6 +88,53 @@ def main() -> int:
     rr.add_argument("--video-mode", choices=["dry-run", "ffmpeg"], default="dry-run")
     rr.add_argument("--ffmpeg-path")
     rr.add_argument("--aivis-base-url")
+    mv = sub.add_parser(
+        "make-video",
+        help="fetch visuals, render, inspect, evaluate, and auto-retry a project",
+    )
+    mv.add_argument("project_path")
+    mv.add_argument(
+        "--visual-keyword",
+        "--video-keyword",
+        "--pexels-keyword",
+        action="append",
+        default=[],
+        dest="visual_keyword",
+        help="Pexels video search keyword. Can be specified multiple times.",
+    )
+    mv.add_argument(
+        "--visual-keywords",
+        "--video-keywords",
+        "--pexels-keywords",
+        dest="visual_keywords",
+        help="Comma-separated Pexels video search keywords.",
+    )
+    mv.add_argument(
+        "--query-mode", choices=["append", "override", "fallback"], default="append"
+    )
+    mv.add_argument("--per-query", type=int)
+    mv.add_argument("--max-downloads", type=int)
+    mv.add_argument(
+        "--orientation", choices=["portrait", "landscape", "square"], default="portrait"
+    )
+    mv.add_argument("--size", choices=["small", "medium", "large"], default="small")
+    mv.add_argument("--voice-mode", choices=["dry-run", "aivis"], default="aivis")
+    mv.add_argument("--video-mode", choices=["dry-run", "ffmpeg"], default="ffmpeg")
+    mv.add_argument("--aivis-base-url")
+    mv.add_argument("--ffmpeg-path")
+    mv.add_argument("--bgm-id")
+    mv.add_argument("--seed", type=int)
+    auto_fix_group = mv.add_mutually_exclusive_group()
+    auto_fix_group.add_argument("--auto-fix", dest="auto_fix", action="store_true")
+    auto_fix_group.add_argument("--no-auto-fix", dest="auto_fix", action="store_false")
+    mv.set_defaults(auto_fix=True)
+    mv.add_argument("--max-fix-attempts", type=int)
+    mv.add_argument("--plan-only", action="store_true")
+    mv.add_argument("--dry-run", action="store_true")
+    mv.add_argument("--skip-fetch-visuals", action="store_true")
+    mv.add_argument("--skip-inspect", action="store_true")
+    mv.add_argument("--skip-evaluate", action="store_true")
+    mv.add_argument("--config-path")
     ya = sub.add_parser("youtube-auth", help="authorize YouTube upload access")
     ya.add_argument("--client-secrets", default="secrets/client_secret.json")
     ya.add_argument("--token-path", default="data/youtube_token.json")
@@ -162,6 +211,8 @@ def main() -> int:
             )
             print(f"Render complete: {output}")
             return 0
+        if args.command == "make-video":
+            return _make_video(args)
         if args.command == "youtube-auth":
             return _youtube_auth(
                 Path(args.client_secrets),
@@ -363,6 +414,50 @@ def _upload_youtube(rendered_path: Path, *, privacy: str) -> int:
     print(f"YouTube upload complete: {result.video_id}")
     print(result.watch_url)
     return 0
+
+
+def _make_video(args: argparse.Namespace) -> int:
+    keywords = list(args.visual_keyword or [])
+    if args.visual_keywords:
+        keywords.extend(
+            keyword.strip()
+            for keyword in args.visual_keywords.split(",")
+            if keyword.strip()
+        )
+    result = make_video(
+        MakeVideoOptions(
+            project_path=Path(args.project_path),
+            visual_keywords=keywords,
+            query_mode=args.query_mode,
+            per_query=args.per_query,
+            max_downloads=args.max_downloads,
+            orientation=args.orientation,
+            size=args.size,
+            voice_mode=args.voice_mode,
+            video_mode=args.video_mode,
+            aivis_base_url=args.aivis_base_url,
+            ffmpeg_path=args.ffmpeg_path,
+            bgm_id=args.bgm_id,
+            seed=args.seed,
+            auto_fix=args.auto_fix,
+            max_fix_attempts=args.max_fix_attempts,
+            plan_only=args.plan_only,
+            dry_run=args.dry_run,
+            skip_fetch_visuals=args.skip_fetch_visuals,
+            skip_inspect=args.skip_inspect,
+            skip_evaluate=args.skip_evaluate,
+            config_path=Path(args.config_path) if args.config_path else None,
+        )
+    )
+    if args.plan_only:
+        print(json.dumps(result.plan, ensure_ascii=False, indent=2))
+    else:
+        print(f"make-video status: {result.status}")
+        if result.run_dir is not None:
+            print(f"Run directory: {result.run_dir}")
+        if result.final_rendered_path is not None:
+            print(f"Final rendered JSON: {result.final_rendered_path}")
+    return result.exit_code
 
 
 def _resolve_rendered_path(path: Path) -> Path:

@@ -15,6 +15,18 @@ def select_bgm_track(
     allow_sources = set(project_bgm.get("allow_sources") or [])
     mood = project_bgm.get("mood")
     intensity = project_bgm.get("intensity")
+    requested_track_id = str(project_bgm.get("track_id") or "").strip()
+    if requested_track_id:
+        explicit_matches = [
+            track
+            for track in tracks
+            if track.is_active
+            and track.track_id == requested_track_id
+            and "youtube_shorts" in track.allowed_platforms
+        ]
+        if explicit_matches:
+            return explicit_matches[0]
+
     matches = [
         track
         for track in tracks

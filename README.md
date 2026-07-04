@@ -19,6 +19,8 @@ YouTube Shorts向けの雑学ショート動画を、ローカル環境で半自
 - 複数映像素材をscriptタイミングに合わせてつなぐFFmpegタイムライン合成
 - Pexels APIの疎通確認、動画検索、download、SQLite素材キャッシュ登録
 - 同一render内で同じPexels/登録映像素材を再利用しない素材選定
+- `make-video` による素材取得、render、inspect、evaluate、自動改善attemptの一括実行
+- `repair_log.json` / `failure_log.json` / `visual_assignment.json` による改善履歴と素材割り当て記録
 - FFmpegによる 1080x1920 / H.264 / AAC のMP4生成
 - `YYYYMMDDHHMM-タイトル` 形式のrenderディレクトリ出力
 - YouTube Data APIへのprivate upload CLI
@@ -66,6 +68,8 @@ Windowsで `permission denied while trying to connect to the docker API at npipe
 .\.venv\Scripts\python.exe -m src.main fetch-visuals projects\trivia_submarine_black_001\project.youtube.json --per-query 3 --max-downloads 18
 .\.venv\Scripts\python.exe -m src.main list-assets
 .\.venv\Scripts\python.exe -m src.main render projects\trivia_submarine_black_001\project.youtube.json --video-mode ffmpeg --ffmpeg-path "C:\path\to\ffmpeg.exe"
+.\.venv\Scripts\python.exe -m src.main make-video projects\example_project.youtube.json --plan-only
+.\scripts\make-video.ps1 -ProjectPath "projects\example_project.youtube.json"
 .\.venv\Scripts\python.exe -m src.main validate-render renders\YYYYMMDDHHMM-タイトル\rendered.youtube.json
 .\.venv\Scripts\python.exe -m src.main evaluate-render renders\YYYYMMDDHHMM-タイトル\rendered.youtube.json
 .\.venv\Scripts\python.exe -m src.main youtube-auth
@@ -90,6 +94,72 @@ $env:AIVIS_SPEECH_BASE_URL = "http://127.0.0.1:10101"
 ```powershell
 .\.venv\Scripts\python.exe -m src.main --debug render projects\trivia_submarine_black_001\project.youtube.json
 ```
+
+## make-video 一括生成
+
+`make-video` は、ローカルに置いた `project.youtube.json` から、Pexels素材取得、動画生成、inspect、quality評価、自動改善attemptまでをまとめて実行します。YouTubeへの投稿は行わず、生成後に `upload-youtube` を別途実行します。
+
+入力JSONは `projects/` 配下に置きます。記入例として [projects/example_project.youtube.json](projects/example_project.youtube.json) を用意しています。このファイルをコピーして、`id`、`topic`、`title`、`hook`、`script[]`、`script[].visual_query`、`youtube` を差し替えるのが基本です。
+
+計画だけ確認:
+
+```powershell
+.\.venv\Scripts\python.exe -m src.main make-video projects\example_project.youtube.json --plan-only
+```
+
+WindowsでAivisSpeech未起動時のDocker起動も含めて実行:
+
+```powershell
+.\scripts\make-video.ps1 -ProjectPath "projects\example_project.youtube.json"
+```
+
+Pexelsへ実際に投げる動画検索キーワードを追加する場合:
+
+```powershell
+.\scripts\make-video.ps1 `
+  -ProjectPath "projects\example_project.youtube.json" `
+  -VideoKeyword "microwave close up","metal mesh macro"
+```
+
+JSON内の `script[].visual_query` より、コマンド引数のキーワードだけで素材検索・割り当てを試したい場合:
+
+```powershell
+.\.venv\Scripts\python.exe -m src.main make-video projects\example_project.youtube.json `
+  --query-mode override `
+  --video-keyword "microwave door metal mesh macro" `
+  --video-keyword "warm kitchen microwave close up"
+```
+
+`--video-keyword` / `--pexels-keyword` は複数指定できます。`--query-mode append` はJSON内の検索語に追加、`override` は引数のキーワードだけを検索・割り当てに使用、`fallback` はJSON内の検索語を優先しつつ不足時候補として引数キーワードを追加します。
+
+出力は `renders/YYYYMMDDHHMM-タイトル/` に作られます。
+
+```text
+inputs/project.original.json
+inputs/project.attempt_001.json
+inputs/project.final.json
+attempts/attempt_001/rendered.youtube.json
+final/rendered.youtube.json
+repair_log.json
+failure_log.json
+visual_assignment.json
+```
+
+`make-video` は元の `project.youtube.json` を直接書き換えません。Pexels素材の重複利用や低解像度素材が見つかった場合は、問題の `asset_id` をそのrun内で除外し、候補数を増やして再attemptします。`VIDEO_DURATION_TOO_LONG` は既定ではwarning扱いです。過去の手動改善と同様に読み上げ速度・文間を詰める自動調整は、`config/auto_repair.youtube_shorts.json` の `duration.auto_increase_speed_for_duration` を `true` にした場合だけ行います。
+
+`--bgm-id` を指定しない場合は、これまでのデフォルトBGM選定を使います。標準manifestでは `No One Here Gets In Alive - National Sweetheart` が選ばれる想定です。明示する場合は次のように指定します。
+
+```powershell
+.\.venv\Scripts\python.exe -m src.main make-video projects\example_project.youtube.json --bgm-id "No One Here Gets In Alive"
+```
+
+YouTubeへprivate投稿する場合は、finalの `rendered.youtube.json` を使います。
+
+```powershell
+.\.venv\Scripts\python.exe -m src.main upload-youtube "renders\YYYYMMDDHHMM-タイトル\final\rendered.youtube.json"
+```
+
+詳細は [docs/make_video.md](docs/make_video.md) と [docs/auto_repair.md](docs/auto_repair.md) を参照してください。
 
 ## スキーマ契約
 
@@ -191,7 +261,7 @@ project JSONから `visual_strategy.primary_query`, `script[].visual_query`, `vi
 .\.venv\Scripts\python.exe -m src.main list-assets
 ```
 
-download先は `assets/pexels/` です。`fetch-visuals` は `assets/pexels/<project_id>.visual_plan.json` も出力します。`selected_asset_id` が同じ素材に偏る場合は、`script[].visual_query` や `fallback_queries` を調整し、`--per-query` / `--max-downloads` を増やしてから再取得してください。登録後のrenderは、既存の `media_assets` 選定経路からPexels素材を選びます。API制限やネットワーク失敗でrender全体が止まることを避けるため、現時点ではrender中に自動検索せず、先に `fetch-visuals` または `fetch-pexels` でキャッシュしておく運用です。
+download先は `assets/pexels/` です。`fetch-visuals` は `assets/pexels/<project_id>.visual_plan.json` も出力します。`selected_asset_id` が同じ素材に偏る場合は、`script[].visual_query` や `fallback_queries` を調整し、`--per-query` / `--max-downloads` を増やしてから再取得してください。登録後のrenderは、既存の `media_assets` 選定経路からPexels素材を選びます。`render` コマンド単体ではAPI制限やネットワーク失敗でrender全体が止まることを避けるため、render中に自動検索せず、先に `fetch-visuals` または `fetch-pexels` でキャッシュしておく運用です。`make-video` はこの事前取得をpipeline内で実行し、失敗時はfailure logへ記録してlocal stock fallbackへ進みます。
 
 ## YouTube private upload
 

@@ -199,6 +199,11 @@
                         "none"
                     ]
                 },
+                "track_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                },
                 "mood": {
                     "type": "string",
                     "enum": [

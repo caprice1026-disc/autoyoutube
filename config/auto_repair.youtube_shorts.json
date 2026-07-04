@@ -1,0 +1,40 @@
+{
+  "repair": {
+    "max_attempts": 5
+  },
+  "duration": {
+    "ideal_sec": 60.0,
+    "shorts_soft_limit_sec": 180.0,
+    "treat_over_ideal_as_warning": true,
+    "auto_shorten_script": false,
+    "auto_increase_speed_for_duration": false
+  },
+  "visuals": {
+    "provider": "pexels",
+    "fresh_fetch_first": true,
+    "min_candidates_per_query": 2,
+    "default_per_query": 3,
+    "max_fetch_attempts": 3,
+    "fallback_stock_enabled": true,
+    "recent_reuse_window_days": 30,
+    "blacklist_failure_threshold": 5
+  },
+  "bgm": {
+    "default_behavior": "use_existing_default",
+    "default_track_hint": "No One Here Gets In Alive - National Sweetheart",
+    "allow_missing_bgm_to_continue": true,
+    "auto_repair_enabled": false
+  },
+  "ffmpeg": {
+    "retry_enabled": true,
+    "max_retries": 2,
+    "retry_by_stderr_keyword": true
+  },
+  "outputs": {
+    "attempt_layout": "attempts_and_final",
+    "write_repair_log": true,
+    "write_failure_log": true,
+    "preserve_original_project_json": true,
+    "record_random_seed": true
+  }
+}

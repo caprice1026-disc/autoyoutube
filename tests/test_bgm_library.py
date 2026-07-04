@@ -115,6 +115,60 @@ def test_select_bgm_track_matches_project_plan_and_lowest_used_count(
     assert selected.track_id == "fresh"
 
 
+def test_select_bgm_track_honors_explicit_track_id(tmp_path: Path) -> None:
+    selected = select_bgm_track(
+        {
+            "enabled": True,
+            "strategy": "youtube_safe_bgm",
+            "track_id": "No One Here Gets In Alive",
+            "mood": "mysterious",
+            "intensity": "low",
+            "allow_sources": ["youtube_audio_library"],
+            "avoid": ["vocal"],
+        },
+        [
+            BgmTrack(
+                track_id="fresh",
+                file_path=tmp_path / "fresh.wav",
+                title="Fresh",
+                artist="Local",
+                source="youtube_audio_library",
+                license_type="youtube_audio_library_standard",
+                attribution_required=False,
+                attribution_text="",
+                mood="mysterious",
+                intensity="low",
+                duration_sec=20,
+                bpm=None,
+                loopable=True,
+                allowed_platforms=["youtube_shorts"],
+                used_count=0,
+                is_active=True,
+            ),
+            BgmTrack(
+                track_id="No One Here Gets In Alive",
+                file_path=tmp_path / "no-one.mp3",
+                title="No One Here Gets In Alive",
+                artist="National Sweetheart",
+                source="youtube_audio_library",
+                license_type="youtube_audio_library_standard",
+                attribution_required=False,
+                attribution_text="",
+                mood="mysterious",
+                intensity="low",
+                duration_sec=20,
+                bpm=None,
+                loopable=True,
+                allowed_platforms=["youtube_shorts"],
+                used_count=8,
+                is_active=True,
+            ),
+        ],
+    )
+
+    assert selected.track_id == "No One Here Gets In Alive"
+
+
 def test_select_bgm_track_raises_actionable_error_when_no_track_matches(
     tmp_path: Path,
 ) -> None:

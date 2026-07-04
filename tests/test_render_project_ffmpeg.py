@@ -214,6 +214,41 @@ def test_render_project_saves_each_render_in_timestamped_title_directory(
     )
 
 
+def test_render_project_can_write_to_explicit_render_directory(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project_path = tmp_path / "project.youtube.json"
+    project_path.write_text(
+        json.dumps(_project(), ensure_ascii=False), encoding="utf-8"
+    )
+    explicit_render_dir = tmp_path / "run" / "attempts" / "attempt_001"
+    monkeypatch.setattr(render_module, "RENDERS_DIR", tmp_path / "renders")
+    monkeypatch.setattr(render_module, "init_db", lambda: None)
+    monkeypatch.setattr(render_module, "connect", lambda: NullConnection())
+    monkeypatch.setattr(render_module, "list_active_bgm_tracks", lambda connection: [])
+    monkeypatch.setattr(
+        render_module, "list_active_media_assets", lambda connection: []
+    )
+    monkeypatch.setattr(render_module, "upsert_project", lambda *args: None)
+    monkeypatch.setattr(render_module, "insert_render_summary", lambda *args: None)
+    renderer = FakeVideoRenderer()
+
+    rendered_path = render_project(
+        project_path,
+        video_renderer=renderer,
+        render_dir=explicit_render_dir,
+    )
+
+    assert rendered_path == explicit_render_dir / "rendered.youtube.json"
+    assert renderer.calls[0]["render_dir"] == explicit_render_dir
+    rendered = json.loads(rendered_path.read_text(encoding="utf-8"))
+    assert (
+        rendered["output"]["video_path"]
+        .replace("\\", "/")
+        .endswith("run/attempts/attempt_001/output.mp4")
+    )
+
+
 def test_render_project_selects_bgm_and_passes_it_to_video_renderer(
     tmp_path: Path, monkeypatch
 ) -> None:

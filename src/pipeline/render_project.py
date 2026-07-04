@@ -75,6 +75,8 @@ def render_project(
     project_path: Path,
     voice_service: VoiceService | None = None,
     video_renderer: VideoRenderer | None = None,
+    render_dir: Path | None = None,
+    rejected_asset_ids: set[str] | None = None,
 ) -> Path:
     init_db()
     project_path = project_path.resolve()
@@ -92,7 +94,11 @@ def render_project(
 
     project_hash = sha256_file(project_path)
     render_time = datetime.now()
-    render_dir = _next_render_dir(project, render_time)
+    render_dir = (
+        render_dir.resolve()
+        if render_dir is not None
+        else _next_render_dir(project, render_time)
+    )
     (render_dir / "audio").mkdir(parents=True, exist_ok=True)
     (render_dir / "video").mkdir(parents=True, exist_ok=True)
     logs_dir = render_dir / "logs"
@@ -112,7 +118,7 @@ def render_project(
     )
     selected_bgm = _select_render_bgm(project["bgm"])
     bgm_render = _build_bgm_render(project["bgm"], selected_bgm, actual_duration)
-    visuals = _select_render_visuals(project, visuals)
+    visuals = _select_render_visuals(project, visuals, rejected_asset_ids or set())
 
     now = render_time.astimezone(timezone.utc)
     render_id = f"render_{now.strftime('%Y%m%d_%H%M%S')}"
@@ -514,7 +520,9 @@ def _select_render_bgm(project_bgm: dict[str, Any]) -> BgmTrack | None:
 
 
 def _select_render_visuals(
-    project: dict[str, Any], visuals: list[dict[str, Any]]
+    project: dict[str, Any],
+    visuals: list[dict[str, Any]],
+    rejected_asset_ids: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     with connect() as connection:
         assets = list_active_media_assets(connection)
@@ -522,7 +530,7 @@ def _select_render_visuals(
         return visuals
 
     selected_visuals: list[dict[str, Any]] = []
-    used_asset_ids: set[str] = set()
+    used_asset_ids: set[str] = set(rejected_asset_ids or set())
     for visual in visuals:
         asset = _select_unused_media_asset(
             visual,
