@@ -1,5 +1,6 @@
 interface:
-  display_name: Autoyoutube Shorts
-  short_description: Local YouTube Shorts generation, inspection, and Codex repair workflow for autoyoutube.
+  display_name: AutoYoutube Shorts
+  short_description: Local YouTube Shorts generation, inspection, repair, and explicit private upload handoff for autoyoutube.
+  default_prompt: Use the autoyoutube-shorts skill to build, inspect, repair, and, if requested, privately upload a YouTube Shorts video.
   icon: video
   accent_color: blue

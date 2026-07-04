@@ -39,6 +39,8 @@ Look for:
 - 3 or more lines on screen
 - white text blending into bright background
 - long subtitles that are hard to read quickly
+
+When a line is close to the safe limit, treat a phrase like `ここで問題になるのが、マグマに含まれるガスです。` as the practical ceiling and split anything longer.
 ```
 
 ## Review timeline.png
@@ -59,6 +61,12 @@ Look for:
 - CPS warning concentration
 - scene changes that do not match narration timing
 - ending audio or subtitle cut-off
+
+If `inspect-render` output is garbled on Windows, rerun the command with UTF-8 console variables set:
+
+```powershell
+$env:PYTHONUTF8='1'; $env:PYTHONIOENCODING='utf-8'; .\.venv\Scripts\python.exe -m src.main inspect-render renders\<project_id>\rendered.youtube.json
+```
 ```
 
 ## Suggested fixes

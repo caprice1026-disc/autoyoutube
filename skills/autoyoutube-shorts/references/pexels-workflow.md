@@ -69,6 +69,8 @@ queries[].candidates[].pexels_url
 
 If multiple `queries[].selected_asset_id` values point to the same asset for a single project, improve the repeated `script[].visual_query` values and fetch more candidates before rendering.
 
+Treat duplicate asset selection as a blocker for review. Do not upload if the same `asset_id` appears more than once in one render.
+
 ## Candidate score interpretation
 
 Good signs:

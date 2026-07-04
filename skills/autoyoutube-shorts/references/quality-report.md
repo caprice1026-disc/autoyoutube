@@ -21,7 +21,7 @@ Fix in this order:
 3. audio checks
 4. subtitle readability checks
 5. video dimension/duration checks
-6. visual asset checks
+6. visual asset checks and repetition checks
 7. file-size/performance warnings
 ```
 
@@ -49,6 +49,7 @@ FILE_MISSING
 OUTPUT_VIDEO_EMPTY
 VIDEO_DIMENSION_INVALID
 VIDEO_DURATION_MISMATCH
+VIDEO_DURATION_TOO_LONG
 OPENING_NO_AUDIO
 AUDIO_CLIPPING
 FINAL_AUDIO_DURATION_MISMATCH
@@ -68,6 +69,8 @@ MANUAL_REVIEW_DISABLED
 ```
 
 `SAME_ASSET_CONSECUTIVE` means the same registered visual asset appears in adjacent visual slots. `SAME_ASSET_REUSED` means the same `asset_id` appears again later in the same render. Both should be treated as repetition risk: improve `script[].visual_query`, fetch more Pexels candidates, and rerender before review.
+
+`VIDEO_DURATION_TOO_LONG` means the render is at or above the Shorts-safe window. Treat it as a pre-upload stop even when the report only marks it as a warning.
 
 ## Artifacts
 
