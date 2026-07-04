@@ -16,18 +16,20 @@ YouTube Shorts向けの雑学ショート動画を、ローカル環境で半自
 - Pexels素材とBGMのcredits生成
 - `evaluate-render` による `quality_report.json` 生成
 - ローカル映像素材manifestのimport、条件選定、FFmpeg背景動画化
+- 複数映像素材をscriptタイミングに合わせてつなぐFFmpegタイムライン合成
 - Pexels APIの疎通確認、動画検索、download、SQLite素材キャッシュ登録
 - FFmpegによる 1080x1920 / H.264 / AAC のMP4生成
+- `YYYYMMDDHHMM-タイトル` 形式のrenderディレクトリ出力
+- YouTube Data APIへのprivate upload CLI
 - Docker ComposeによるPythonアプリとAivisSpeech Engine APIサーバーの起動定義
 - CLIエラーの `Error`, `Location`, `Details`, `Next step` 形式での表示
 - `--debug` 指定時のtraceback表示
 
 未実装または今後の実装対象:
 
-- 複数映像素材のタイムライン合成
 - thumbnail.jpg生成
 - 手動レビュー状態更新CLI
-- YouTube upload / Analytics連携
+- thumbnail upload / upload status確認 / Analytics連携
 
 ## セットアップ
 
@@ -63,8 +65,10 @@ Windowsで `permission denied while trying to connect to the docker API at npipe
 .\.venv\Scripts\python.exe -m src.main fetch-pexels projects\trivia_submarine_black_001\project.youtube.json --per-query 1 --max-downloads 1
 .\.venv\Scripts\python.exe -m src.main list-assets
 .\.venv\Scripts\python.exe -m src.main render projects\trivia_submarine_black_001\project.youtube.json --video-mode ffmpeg --ffmpeg-path "C:\path\to\ffmpeg.exe"
-.\.venv\Scripts\python.exe -m src.main validate-render renders\trivia_submarine_black_001\rendered.youtube.json
-.\.venv\Scripts\python.exe -m src.main evaluate-render renders\trivia_submarine_black_001\rendered.youtube.json
+.\.venv\Scripts\python.exe -m src.main validate-render renders\YYYYMMDDHHMM-タイトル\rendered.youtube.json
+.\.venv\Scripts\python.exe -m src.main evaluate-render renders\YYYYMMDDHHMM-タイトル\rendered.youtube.json
+.\.venv\Scripts\python.exe -m src.main youtube-auth
+.\.venv\Scripts\python.exe -m src.main upload-youtube renders\YYYYMMDDHHMM-タイトル\rendered.youtube.json
 ```
 
 AivisSpeechを使う場合:
@@ -146,7 +150,7 @@ sample projectでは `bgm.allow_sources` を `["youtube_audio_library"]` にし�
 
 ## 映像素材manifest
 
-`import-media` はローカル動画ファイルをDBへ登録します。ファイルパスはmanifestからの相対パス、または絶対パスで指定できます。`render` は `project.youtube.json` の `visual_query` に近い素材を選び、最初に選定された動画をFFmpeg背景としてループ利用します。
+`import-media` はローカル動画ファイルをDBへ登録します。ファイルパスはmanifestからの相対パス、または絶対パスで指定できます。`render` は `project.youtube.json` の `script[].visual_query` に近い素材を文ごとに選び、2件以上の有効素材がある場合はFFmpegで区間ごとにtrim/scale/cropして連結します。1件だけの場合は単一背景としてループし、0件の場合は単色背景へフォールバックします。
 
 ```json
 {
@@ -188,6 +192,17 @@ project JSONから `visual_strategy.primary_query`, `script[].visual_query`, `vi
 
 download先は `assets/pexels/` です。登録後のrenderは、既存の `media_assets` 選定経路からPexels素材を選びます。API制限やネットワーク失敗でrender全体が止まることを避けるため、現時点ではrender中に自動検索せず、先に `fetch-pexels` でキャッシュしておく運用です。
 
+## YouTube private upload
+
+YouTubeアップロードは `private` のみ対応します。`public` / `unlisted` はCLIで受け付けません。アップロード前に、`output.mp4`、`description.txt`、`credits.txt`、`quality_report.json` が存在し、`quality_report.json` の `summary.error_count` が0で、`rendered.youtube.json` の `manual_review.checked` と `manual_review.publish_ready` が `true` である必要があります。
+
+OAuthクライアントシークレットは `secrets/client_secret.json` に置きます。取得したトークンは `data/youtube_token.json` に保存され、どちらもGit管理しません。
+
+```powershell
+.\.venv\Scripts\python.exe -m src.main youtube-auth
+.\.venv\Scripts\python.exe -m src.main upload-youtube renders\YYYYMMDDHHMM-タイトル\rendered.youtube.json
+```
+
 ## Docker / AivisSpeech Engine
 
 AivisSpeechのAPIサーバーは `AivisSpeech-Engine` です。ローカルcloneからbuildしたい場合は、リポジトリ直下にcloneします。このディレクトリは `.gitignore` 対象です。
@@ -215,7 +230,7 @@ AivisSpeech Engineのモデルやログは `data/aivis-engine/` に保存され�
 
 ## 生成される主なファイル
 
-`render` は `renders/{project_id}/` に以下を生成します。
+`render` は `renders/YYYYMMDDHHMM-タイトル/` に以下を生成します。同じ分に同じタイトルで複数回renderした場合は、ディレクトリ名の末尾に `-2`, `-3` のような連番が付きます。
 
 - `output.mp4`
 - `rendered.youtube.json`
@@ -229,15 +244,15 @@ AivisSpeech Engineのモデルやログは `data/aivis-engine/` に保存され�
 - `logs/ffmpeg_stderr.log`
 - `quality_report.json` (`evaluate-render` 実行時)
 
-`renders/`, `data/*.db`, `data/aivis-engine/`, `assets/pexels/`, `assets/fonts/`, `assets/local_media/` は生成物またはローカル素材置き場として `.gitignore` 対象です。`assets/bgm/bgm_manifest.json` は追跡対象ですが、BGM音源ファイル本体は `.gitignore` 対象です。
+`renders/`, `data/*.db`, `data/youtube_token.json`, `data/aivis-engine/`, `secrets/`, `assets/pexels/`, `assets/fonts/`, `assets/local_media/` は生成物、秘密情報、またはローカル素材置き場として `.gitignore` 対象です。`assets/bgm/bgm_manifest.json` は追跡対象ですが、BGM音源ファイル本体は `.gitignore` 対象です。
 
 ## 品質検査
 
 `evaluate-render` は、生成済みの `rendered.youtube.json` と実ファイルを検査し、同じrenderディレクトリに `quality_report.json` を出力します。初期チェックでは、必須ファイル欠落、空のoutput.mp4、BGM credit漏れ、Pexels credit漏れ、字幕長、字幕表示時間、BGM音量、manual review必須状態を見ます。
 
 ```powershell
-.\.venv\Scripts\python.exe -m src.main evaluate-render renders\trivia_submarine_black_001\rendered.youtube.json
-Get-Content renders\trivia_submarine_black_001\quality_report.json
+.\.venv\Scripts\python.exe -m src.main evaluate-render renders\YYYYMMDDHHMM-タイトル\rendered.youtube.json
+Get-Content renders\YYYYMMDDHHMM-タイトル\quality_report.json
 ```
 
 ## 検証
@@ -248,4 +263,4 @@ Get-Content renders\trivia_submarine_black_001\quality_report.json
 .\.venv\Scripts\python.exe -m ruff format . --check
 ```
 
-現在のテストは、JSON検証、CLIエラー表示、AivisSpeechクライアント、音声結合、BGM登録/選定、ローカル映像素材登録/選定、Pexels APIクライアント、Docker Compose設定、FFmpegコマンド生成、レンダーパイプライン、DB保存、quality evaluatorを対象にしています。
+現在のテストは、JSON検証、CLIエラー表示、AivisSpeechクライアント、音声結合、BGM登録/選定、ローカル映像素材登録/選定、Pexels APIクライアント、Docker Compose設定、FFmpegコマンド生成、複数映像素材タイムライン、レンダーパイプライン、DB保存、quality evaluator、YouTube upload metadata/uploaderを対象にしています。

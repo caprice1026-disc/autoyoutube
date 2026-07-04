@@ -23,6 +23,8 @@ from src.quality.evaluator import evaluate_render
 from src.render.ffmpeg_renderer import FfmpegVideoRenderer
 from src.validators.json_validator import load_json, validate_json_file
 from src.voice.aivis_client import AivisSpeechClient
+from src.youtube.auth import authorize_youtube_upload
+from src.youtube.uploader import upload_private_video
 
 
 def main() -> int:
@@ -66,6 +68,14 @@ def main() -> int:
     rr.add_argument("--video-mode", choices=["dry-run", "ffmpeg"], default="dry-run")
     rr.add_argument("--ffmpeg-path")
     rr.add_argument("--aivis-base-url")
+    ya = sub.add_parser("youtube-auth", help="authorize YouTube upload access")
+    ya.add_argument("--client-secrets", default="secrets/client_secret.json")
+    ya.add_argument("--token-path", default="data/youtube_token.json")
+    uy = sub.add_parser(
+        "upload-youtube", help="upload a rendered video to YouTube as private"
+    )
+    uy.add_argument("rendered_path")
+    uy.add_argument("--privacy", default="private")
     args = parser.parse_args()
 
     try:
@@ -122,6 +132,13 @@ def main() -> int:
             )
             print(f"Render complete: {output}")
             return 0
+        if args.command == "youtube-auth":
+            return _youtube_auth(
+                Path(args.client_secrets),
+                Path(args.token_path),
+            )
+        if args.command == "upload-youtube":
+            return _upload_youtube(Path(args.rendered_path), privacy=args.privacy)
     except AppError as exc:
         print(exc.to_cli_text(), file=sys.stderr)
         return 1
@@ -259,6 +276,19 @@ def _fetch_pexels(
     print(f"Fetched Pexels assets: {len(assets)}")
     for asset in assets:
         print(f"{asset.asset_id}\t{asset.query}\t{asset.local_file_path}")
+    return 0
+
+
+def _youtube_auth(client_secrets_path: Path, token_path: Path) -> int:
+    authorize_youtube_upload(client_secrets_path, token_path)
+    print(f"YouTube OAuth token ready: {token_path.as_posix()}")
+    return 0
+
+
+def _upload_youtube(rendered_path: Path, *, privacy: str) -> int:
+    result = upload_private_video(rendered_path, privacy_status=privacy)
+    print(f"YouTube upload complete: {result.video_id}")
+    print(result.watch_url)
     return 0
 
 

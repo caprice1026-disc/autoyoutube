@@ -15,6 +15,12 @@ from src.errors import AppError
 
 
 @dataclass(frozen=True)
+class FfmpegVideoSegment:
+    path: Path
+    duration_sec: float
+
+
+@dataclass(frozen=True)
 class FfmpegRenderRequest:
     render_dir: Path
     duration_sec: float
@@ -29,6 +35,7 @@ class FfmpegRenderRequest:
     audio_codec: str
     pix_fmt: str
     background_video_path: Path | None = None
+    background_video_segments: list[FfmpegVideoSegment] | None = None
     bgm_path: Path | None = None
     bgm_volume_db: float = DEFAULT_BGM_VOLUME_DB
     bgm_fade_in_sec: float = DEFAULT_BGM_FADE_IN_MS / 1000
@@ -37,7 +44,18 @@ class FfmpegRenderRequest:
 
 def build_ffmpeg_command(request: FfmpegRenderRequest, ffmpeg_path: Path) -> list[str]:
     command = [str(ffmpeg_path), "-y"]
-    if request.background_video_path is not None:
+    video_segments = list(request.background_video_segments or [])
+    if video_segments:
+        for segment in video_segments:
+            command.extend(
+                [
+                    "-stream_loop",
+                    "-1",
+                    "-i",
+                    _relative_arg(segment.path, request.render_dir),
+                ]
+            )
+    elif request.background_video_path is not None:
         command.extend(
             [
                 "-stream_loop",
@@ -55,7 +73,9 @@ def build_ffmpeg_command(request: FfmpegRenderRequest, ffmpeg_path: Path) -> lis
                 f"color=c=0x07111f:s={request.width}x{request.height}:r={request.fps}:d={request.duration_sec:.3f}",
             ]
         )
+
     command.extend(["-i", _relative_arg(request.audio_path, request.render_dir)])
+    narration_input_index = len(video_segments) if video_segments else 1
     if request.bgm_path is not None:
         command.extend(
             [
@@ -65,45 +85,65 @@ def build_ffmpeg_command(request: FfmpegRenderRequest, ffmpeg_path: Path) -> lis
                 _relative_arg(request.bgm_path, request.render_dir),
             ]
         )
-    command.extend(["-vf", _video_filter(request)])
-    if request.bgm_path is not None:
+
+    if video_segments:
+        filters = [_video_timeline_filter(request, video_segments)]
+        if request.bgm_path is not None:
+            filters.append(
+                _bgm_filter(
+                    request,
+                    narration_input_index=narration_input_index,
+                    bgm_input_index=narration_input_index + 1,
+                )
+            )
+        command.extend(["-filter_complex", ";".join(filters)])
         command.extend(
-            [
-                "-filter_complex",
-                _bgm_filter(request),
-                "-shortest",
-                "-t",
-                f"{request.duration_sec:.3f}",
-                "-c:v",
-                request.video_codec,
-                "-pix_fmt",
-                request.pix_fmt,
-                "-r",
-                str(request.fps),
-                "-c:a",
-                request.audio_codec,
-                "-map",
-                "0:v",
-                "-map",
-                "[aout]",
-            ]
+            _timeline_output_options(
+                request,
+                narration_input_index=narration_input_index,
+                has_bgm=request.bgm_path is not None,
+            )
         )
     else:
-        command.extend(
-            [
-                "-shortest",
-                "-t",
-                f"{request.duration_sec:.3f}",
-                "-c:v",
-                request.video_codec,
-                "-pix_fmt",
-                request.pix_fmt,
-                "-r",
-                str(request.fps),
-                "-c:a",
-                request.audio_codec,
-            ]
-        )
+        command.extend(["-vf", _video_filter(request)])
+        if request.bgm_path is not None:
+            command.extend(
+                [
+                    "-filter_complex",
+                    _bgm_filter(request),
+                    "-shortest",
+                    "-t",
+                    f"{request.duration_sec:.3f}",
+                    "-c:v",
+                    request.video_codec,
+                    "-pix_fmt",
+                    request.pix_fmt,
+                    "-r",
+                    str(request.fps),
+                    "-c:a",
+                    request.audio_codec,
+                    "-map",
+                    "0:v",
+                    "-map",
+                    "[aout]",
+                ]
+            )
+        else:
+            command.extend(
+                [
+                    "-shortest",
+                    "-t",
+                    f"{request.duration_sec:.3f}",
+                    "-c:v",
+                    request.video_codec,
+                    "-pix_fmt",
+                    request.pix_fmt,
+                    "-r",
+                    str(request.fps),
+                    "-c:a",
+                    request.audio_codec,
+                ]
+            )
     command.append(_relative_arg(request.output_path, request.render_dir))
     return command
 
@@ -153,6 +193,7 @@ class FfmpegVideoRenderer:
     ) -> dict[str, str | bool]:
         video_format = target["video_format"]
         resolution = target["resolution"]
+        video_segments = _visual_background_segments(visuals)
         request = FfmpegRenderRequest(
             render_dir=render_dir,
             duration_sec=duration_sec,
@@ -166,7 +207,10 @@ class FfmpegVideoRenderer:
             video_codec=video_format["video_codec"],
             audio_codec=video_format["audio_codec"],
             pix_fmt=video_format["pix_fmt"],
-            background_video_path=_visual_background_path(visuals),
+            background_video_path=video_segments[0].path
+            if len(video_segments) == 1
+            else None,
+            background_video_segments=video_segments if len(video_segments) > 1 else None,
             bgm_path=Path(bgm["file_path"]) if bgm else None,
             bgm_volume_db=float(bgm["volume_db"]) if bgm else DEFAULT_BGM_VOLUME_DB,
             bgm_fade_in_sec=float(bgm["fade_in_ms"]) / 1000
@@ -221,6 +265,87 @@ def _video_filter(request: FfmpegRenderRequest) -> str:
     )
 
 
+def _video_timeline_filter(
+    request: FfmpegRenderRequest, segments: list[FfmpegVideoSegment]
+) -> str:
+    filters: list[str] = []
+    for index, segment in enumerate(segments):
+        filters.append(
+            f"[{index}:v]"
+            f"trim=duration={segment.duration_sec:.3f},"
+            "setpts=PTS-STARTPTS,"
+            f"scale={request.width}:{request.height}:force_original_aspect_ratio=increase,"
+            f"crop={request.width}:{request.height},"
+            f"fps={request.fps},"
+            "setsar=1"
+            f"[v{index}]"
+        )
+    inputs = "".join(f"[v{index}]" for index in range(len(segments)))
+    filters.append(f"{inputs}concat=n={len(segments)}:v=1:a=0[vcat]")
+    filters.append(
+        f"[vcat]subtitles={_relative_arg(request.subtitle_path, request.render_dir)}[vout]"
+    )
+    return ";".join(filters)
+
+
+def _timeline_output_options(
+    request: FfmpegRenderRequest, *, narration_input_index: int, has_bgm: bool
+) -> list[str]:
+    return [
+        "-shortest",
+        "-t",
+        f"{request.duration_sec:.3f}",
+        "-c:v",
+        request.video_codec,
+        "-pix_fmt",
+        request.pix_fmt,
+        "-r",
+        str(request.fps),
+        "-c:a",
+        request.audio_codec,
+        "-map",
+        "[vout]",
+        "-map",
+        "[aout]" if has_bgm else f"{narration_input_index}:a",
+    ]
+
+
+def _visual_background_segments(visuals: list[dict] | None) -> list[FfmpegVideoSegment]:
+    if not visuals:
+        return []
+    valid_visuals = [visual for visual in visuals if visual.get("asset_id")]
+    segments: list[FfmpegVideoSegment] = []
+    for index, visual in enumerate(valid_visuals):
+        path = Path(visual["local_file_path"])
+        if not path.is_file():
+            raise AppError(
+                "Media background file was not found.",
+                location=str(path),
+                next_step="Re-import the media manifest or fix the asset local_file_path.",
+            )
+        start_sec = float(visual.get("video_start_sec") or 0.0)
+        if index + 1 < len(valid_visuals):
+            next_start_sec = float(
+                valid_visuals[index + 1].get("video_start_sec") or start_sec
+            )
+            duration_sec = next_start_sec - start_sec
+        else:
+            duration_sec = _visual_duration_sec(visual)
+        if duration_sec <= 0:
+            duration_sec = _visual_duration_sec(visual)
+        segments.append(
+            FfmpegVideoSegment(path=path, duration_sec=round(duration_sec, 3))
+        )
+    return segments
+
+
+def _visual_duration_sec(visual: dict) -> float:
+    used_duration = visual.get("used_duration_sec")
+    if used_duration is not None:
+        return float(used_duration)
+    return float(visual["video_end_sec"]) - float(visual["video_start_sec"])
+
+
 def _visual_background_path(visuals: list[dict] | None) -> Path | None:
     if not visuals:
         return None
@@ -238,12 +363,17 @@ def _visual_background_path(visuals: list[dict] | None) -> Path | None:
     return None
 
 
-def _bgm_filter(request: FfmpegRenderRequest) -> str:
+def _bgm_filter(
+    request: FfmpegRenderRequest,
+    *,
+    narration_input_index: int = 1,
+    bgm_input_index: int = 2,
+) -> str:
     volume = 10 ** (request.bgm_volume_db / 20)
     fade_out_start = max(0.0, request.duration_sec - request.bgm_fade_out_sec)
     return (
-        f"[1:a]volume=1.0[narr];"
-        f"[2:a]volume={volume:.6f},"
+        f"[{narration_input_index}:a]volume=1.0[narr];"
+        f"[{bgm_input_index}:a]volume={volume:.6f},"
         f"afade=t=in:st=0:d={request.bgm_fade_in_sec:.3f},"
         f"afade=t=out:st={fade_out_start:.3f}:d={request.bgm_fade_out_sec:.3f}[bgm];"
         "[narr][bgm]amix=inputs=2:duration=first:dropout_transition=0[aout]"

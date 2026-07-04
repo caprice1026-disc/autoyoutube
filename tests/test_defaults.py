@@ -21,7 +21,7 @@ def test_defaults_expose_video_bgm_subtitle_and_quality_constants() -> None:
     assert defaults.DEFAULT_SUBTITLE_FONT_SIZE == 72
     assert defaults.DEFAULT_SUBTITLE_MARGIN_V == 220
     assert defaults.DEFAULT_NARRATION_PEAK_DBFS == -3.0
-    assert defaults.MAX_SUBTITLE_CHARS == 32
+    assert defaults.MAX_SUBTITLE_CHARS == 24
     assert defaults.MIN_SUBTITLE_DURATION_SEC == 1.2
     assert defaults.MAX_SUBTITLE_CPS == 16.0
     assert defaults.MAX_SUBTITLE_LINES == 2
