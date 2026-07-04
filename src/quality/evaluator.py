@@ -43,6 +43,7 @@ def evaluate_render(
             location=str(rendered_path),
             next_step="Run render first, then pass the generated rendered.youtube.json.",
         )
+
     rendered = load_json(rendered_path)
     probe_result = _probe_output_video(rendered, video_probe or _ffprobe_video)
     audio_checks, audio_metrics = _audio_checks(rendered)
@@ -65,6 +66,7 @@ def evaluate_render(
         "summary": _summary(status, checks),
         "checks": checks,
         "metrics": metrics,
+        "artifacts": _artifacts(rendered_path.parent),
     }
     report_path = rendered_path.parent / "quality_report.json"
     report_path.write_text(
@@ -82,13 +84,8 @@ def _probe_output_video(
     try:
         result = dict(video_probe(output_path))
     except Exception as exc:  # pragma: no cover - defensive boundary for CLI use.
-        return {
-            "ok": False,
-            "code": "FFPROBE_FAILED",
-            "error": str(exc),
-        }
-    if "ok" not in result:
-        result["ok"] = True
+        return {"ok": False, "code": "FFPROBE_FAILED", "error": str(exc)}
+    result.setdefault("ok", True)
     return result
 
 
@@ -255,13 +252,8 @@ def _video_checks(
                 )
             )
 
-    duration_for_policy = (
-        video_duration if video_duration is not None else rendered_duration
-    )
-    if (
-        duration_for_policy is not None
-        and duration_for_policy > MAX_SHORTS_DURATION_SEC
-    ):
+    duration_for_policy = video_duration if video_duration is not None else rendered_duration
+    if duration_for_policy is not None and duration_for_policy > MAX_SHORTS_DURATION_SEC:
         checks.append(
             _check(
                 "VIDEO_DURATION_TOO_LONG",
@@ -297,13 +289,10 @@ def _video_checks(
     return checks
 
 
-def _audio_checks(
-    rendered: dict[str, Any],
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+def _audio_checks(rendered: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     checks: list[dict[str, Any]] = []
     metrics: dict[str, Any] = {}
-    audio = rendered.get("audio", {})
-    final_audio_path_text = audio.get("final_audio_path")
+    final_audio_path_text = rendered.get("audio", {}).get("final_audio_path")
     if not final_audio_path_text:
         return checks, metrics
 
@@ -347,17 +336,16 @@ def _audio_checks(
         }
     )
 
-    opening_rms = final_stats["opening_rms_dbfs"]
-    if opening_rms <= SILENCE_DBFS_THRESHOLD:
+    if final_stats["opening_rms_dbfs"] <= SILENCE_DBFS_THRESHOLD:
         checks.append(
             _check(
                 "OPENING_NO_AUDIO",
                 "warning",
                 "audio.final_audio_path",
-                f"冒頭{OPENING_SILENCE_SEC:.1f}秒の音声RMSが{opening_rms:.1f}dBFSで、無音に近いです。",
+                f"冒頭{OPENING_SILENCE_SEC:.1f}秒の音声RMSが{final_stats['opening_rms_dbfs']:.1f}dBFSで、無音に近いです。",
                 "Shortsでは冒頭の無音を短くし、最初の発話やBGM開始を前倒ししてください。",
                 metrics={
-                    "opening_rms_dbfs": opening_rms,
+                    "opening_rms_dbfs": final_stats["opening_rms_dbfs"],
                     "threshold_dbfs": SILENCE_DBFS_THRESHOLD,
                     "window_sec": OPENING_SILENCE_SEC,
                 },
@@ -366,17 +354,16 @@ def _audio_checks(
             )
         )
 
-    peak_dbfs = final_stats["peak_dbfs"]
-    if peak_dbfs >= AUDIO_CLIPPING_DBFS_THRESHOLD:
+    if final_stats["peak_dbfs"] >= AUDIO_CLIPPING_DBFS_THRESHOLD:
         checks.append(
             _check(
                 "AUDIO_CLIPPING",
                 "warning",
                 "audio.final_audio_path",
-                f"final_audio.wavのピークが{peak_dbfs:.2f}dBFSで、音割れに近いです。",
+                f"final_audio.wavのピークが{final_stats['peak_dbfs']:.2f}dBFSで、音割れに近いです。",
                 "音声合成後のゲインを下げるか、正規化処理を追加してください。",
                 metrics={
-                    "peak_dbfs": peak_dbfs,
+                    "peak_dbfs": final_stats["peak_dbfs"],
                     "threshold_dbfs": AUDIO_CLIPPING_DBFS_THRESHOLD,
                 },
                 auto_fixable=True,
@@ -407,28 +394,25 @@ def _audio_checks(
 
     expected_sample_rate = _int_or_none(rendered.get("voice", {}).get("sample_rate"))
     final_sample_rate = _int_or_none(final_stats.get("sample_rate"))
-    if (
-        expected_sample_rate is not None
-        and final_sample_rate is not None
-        and final_sample_rate != expected_sample_rate
-    ):
-        checks.append(
-            _check(
-                "AUDIO_SAMPLE_RATE_MISMATCH",
-                "warning",
-                "audio.final_audio_path",
-                f"final_audio.wavのsample rateが{final_sample_rate}Hzで、rendered voiceの{expected_sample_rate}Hzと一致しません。",
-                "音声生成と結合処理のsample rateを統一してください。",
-                metrics={
-                    "expected_sample_rate": expected_sample_rate,
-                    "actual_sample_rate": final_sample_rate,
-                },
-                auto_fixable=True,
-                codex_hint="Resample sentence WAVs to a single project sample rate before merging.",
+    if expected_sample_rate is not None and final_sample_rate is not None:
+        if final_sample_rate != expected_sample_rate:
+            checks.append(
+                _check(
+                    "AUDIO_SAMPLE_RATE_MISMATCH",
+                    "warning",
+                    "audio.final_audio_path",
+                    f"final_audio.wavのsample rateが{final_sample_rate}Hzで、rendered voiceの{expected_sample_rate}Hzと一致しません。",
+                    "音声生成と結合処理のsample rateを統一してください。",
+                    metrics={
+                        "expected_sample_rate": expected_sample_rate,
+                        "actual_sample_rate": final_sample_rate,
+                    },
+                    auto_fixable=True,
+                    codex_hint="Resample sentence WAVs to a single project sample rate before merging.",
+                )
             )
-        )
 
-    for index, item in enumerate(audio.get("narration_files", [])):
+    for index, item in enumerate(rendered.get("audio", {}).get("narration_files", [])):
         path_text = item.get("path")
         if not path_text:
             continue
@@ -437,27 +421,23 @@ def _audio_checks(
             continue
         sentence_stats = _read_wav_stats(wav_path, opening_sec=0.0)
         sample_rate = _int_or_none(sentence_stats.get("sample_rate"))
-        if (
-            sentence_stats.get("ok") is not False
-            and sample_rate is not None
-            and final_sample_rate is not None
-            and sample_rate != final_sample_rate
-        ):
-            checks.append(
-                _check(
-                    "AUDIO_SAMPLE_RATE_MISMATCH",
-                    "warning",
-                    f"audio.narration_files[{index}].path",
-                    f"文単位WAVのsample rateが{sample_rate}Hzで、final_audio.wavの{final_sample_rate}Hzと一致しません。",
-                    "文単位WAVを結合前に同一sample rateへ揃えてください。",
-                    metrics={
-                        "sentence_sample_rate": sample_rate,
-                        "final_audio_sample_rate": final_sample_rate,
-                    },
-                    auto_fixable=True,
-                    codex_hint="Normalize all generated sentence WAV sample rates before merge_wav_files.",
+        if sentence_stats.get("ok") is not False and sample_rate is not None:
+            if final_sample_rate is not None and sample_rate != final_sample_rate:
+                checks.append(
+                    _check(
+                        "AUDIO_SAMPLE_RATE_MISMATCH",
+                        "warning",
+                        f"audio.narration_files[{index}].path",
+                        f"文単位WAVのsample rateが{sample_rate}Hzで、final_audio.wavの{final_sample_rate}Hzと一致しません。",
+                        "文単位WAVを結合前に同一sample rateへ揃えてください。",
+                        metrics={
+                            "sentence_sample_rate": sample_rate,
+                            "final_audio_sample_rate": final_sample_rate,
+                        },
+                        auto_fixable=True,
+                        codex_hint="Normalize all generated sentence WAV sample rates before merge_wav_files.",
+                    )
                 )
-            )
     return checks, metrics
 
 
@@ -529,10 +509,7 @@ def _subtitle_checks(rendered: dict[str, Any]) -> list[dict[str, Any]]:
                     f"subtitles.items[{index}]",
                     f"字幕が{len(lines)}行で、推奨上限{MAX_SUBTITLE_LINES}行を超えています。",
                     "字幕の文分割や短文化を検討してください。",
-                    metrics={
-                        "line_count": len(lines),
-                        "max_allowed_lines": MAX_SUBTITLE_LINES,
-                    },
+                    metrics={"line_count": len(lines), "max_allowed_lines": MAX_SUBTITLE_LINES},
                     auto_fixable=True,
                     codex_hint="Split dense subtitles into shorter script items or reduce wrapping pressure.",
                 )
@@ -565,10 +542,7 @@ def _subtitle_checks(rendered: dict[str, Any]) -> list[dict[str, Any]]:
                     f"subtitles.items[{index}]",
                     f"字幕表示時間が{duration:.2f}秒で、推奨値{MIN_SUBTITLE_DURATION_SEC:.2f}秒未満です。",
                     "文の分割や読み上げ速度を調整してください。",
-                    metrics={
-                        "duration_sec": round(duration, 3),
-                        "min_duration_sec": MIN_SUBTITLE_DURATION_SEC,
-                    },
+                    metrics={"duration_sec": round(duration, 3), "min_duration_sec": MIN_SUBTITLE_DURATION_SEC},
                     auto_fixable=True,
                     codex_hint="Avoid very short subtitle windows or merge ultra-short script items with adjacent lines.",
                 )
@@ -589,10 +563,7 @@ def _bgm_checks(rendered: dict[str, Any]) -> list[dict[str, Any]]:
                 "bgm.volume_db",
                 f"BGM音量が{volume_db}dBで、推奨上限{MAX_BGM_VOLUME_DB}dBより大きいです。",
                 "ナレーションを優先し、volume_dbを下げてください。",
-                metrics={
-                    "volume_db": float(volume_db),
-                    "max_allowed_volume_db": MAX_BGM_VOLUME_DB,
-                },
+                metrics={"volume_db": float(volume_db), "max_allowed_volume_db": MAX_BGM_VOLUME_DB},
                 auto_fixable=True,
                 codex_hint="Lower project.bgm.volume_db or default BGM volume.",
             )
@@ -608,9 +579,7 @@ def _ffmpeg_checks(rendered: dict[str, Any]) -> list[dict[str, Any]]:
     stderr_lower = stderr.lower()
     checks: list[dict[str, Any]] = []
     warning_patterns = ["warning", "deprecated", "non-monotonous"]
-    matched_warnings = [
-        pattern for pattern in warning_patterns if pattern in stderr_lower
-    ]
+    matched_warnings = [pattern for pattern in warning_patterns if pattern in stderr_lower]
     if matched_warnings:
         checks.append(
             _check(
@@ -624,9 +593,7 @@ def _ffmpeg_checks(rendered: dict[str, Any]) -> list[dict[str, Any]]:
             )
         )
 
-    font_name = str(
-        rendered.get("subtitles", {}).get("style", {}).get("font_name") or ""
-    )
+    font_name = str(rendered.get("subtitles", {}).get("style", {}).get("font_name") or "")
     fallback_lines = _font_fallback_lines(stderr, font_name)
     if fallback_lines:
         checks.append(
@@ -646,16 +613,11 @@ def _ffmpeg_checks(rendered: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _visual_checks(rendered: dict[str, Any]) -> list[dict[str, Any]]:
     checks: list[dict[str, Any]] = []
-    visuals = rendered.get("visuals", [])
     previous_asset_id: str | None = None
-    for index, visual in enumerate(visuals):
+    for index, visual in enumerate(rendered.get("visuals", [])):
         width = _int_or_none(visual.get("original_width"))
         height = _int_or_none(visual.get("original_height"))
-        if (
-            width is not None
-            and height is not None
-            and min(width, height) < MIN_SOURCE_SHORT_EDGE
-        ):
+        if width is not None and height is not None and min(width, height) < MIN_SOURCE_SHORT_EDGE:
             checks.append(
                 _check(
                     "SOURCE_RESOLUTION_TOO_LOW",
@@ -712,20 +674,11 @@ def _metrics(
     audio_metrics: dict[str, Any],
 ) -> dict[str, Any]:
     subtitles = rendered.get("subtitles", {}).get("items", [])
-    subtitle_lengths = [
-        _max_subtitle_line_chars(str(item.get("text") or "")) for item in subtitles
-    ]
-    subtitle_line_counts = [
-        len(_subtitle_lines(str(item.get("text") or ""))) for item in subtitles
-    ]
-    subtitle_durations = [
-        float(item["end_sec"]) - float(item["start_sec"]) for item in subtitles
-    ]
+    subtitle_lengths = [_max_subtitle_line_chars(str(item.get("text") or "")) for item in subtitles]
+    subtitle_line_counts = [len(_subtitle_lines(str(item.get("text") or ""))) for item in subtitles]
+    subtitle_durations = [float(item["end_sec"]) - float(item["start_sec"]) for item in subtitles]
     subtitle_cps = [
-        _subtitle_cps(
-            str(item.get("text") or ""),
-            float(item["end_sec"]) - float(item["start_sec"]),
-        )
+        _subtitle_cps(str(item.get("text") or ""), float(item["end_sec"]) - float(item["start_sec"]))
         for item in subtitles
     ]
     resolution = rendered["target"]["resolution"]
@@ -761,10 +714,25 @@ def _metrics(
             }
         )
         if rendered_duration is not None and video_duration is not None:
-            metrics["duration_diff_sec"] = round(
-                abs(video_duration - rendered_duration), 3
-            )
+            metrics["duration_diff_sec"] = round(abs(video_duration - rendered_duration), 3)
     return metrics
+
+
+def _artifacts(render_dir: Path) -> dict[str, Any]:
+    inspect_dir = render_dir / "inspect"
+    screenshot_paths = [
+        inspect_dir / name
+        for name in ("opening.png", "middle.png", "ending.png")
+        if (inspect_dir / name).is_file()
+    ]
+    subtitle_frame_paths = sorted(inspect_dir.glob("subtitle_*.png")) if inspect_dir.is_dir() else []
+    timeline_path = inspect_dir / "timeline.png"
+    return {
+        "inspect_dir": _rel(inspect_dir) if inspect_dir.is_dir() else None,
+        "screenshot_paths": [_rel(path) for path in screenshot_paths],
+        "subtitle_frame_paths": [_rel(path) for path in subtitle_frame_paths],
+        "timeline_png_path": _rel(timeline_path) if timeline_path.is_file() else None,
+    }
 
 
 def _summary(status: str, checks: list[dict[str, Any]]) -> dict[str, Any]:
@@ -817,9 +785,15 @@ def _resolve_path(path_text: str) -> Path:
     return Path.cwd() / path
 
 
+def _rel(path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(Path.cwd().resolve()))
+    except ValueError:
+        return str(path)
+
+
 def _max_subtitle_line_chars(text: str) -> int:
-    lines = _subtitle_lines(text)
-    return max((len(line) for line in lines), default=0)
+    return max((len(line) for line in _subtitle_lines(text)), default=0)
 
 
 def _subtitle_lines(text: str) -> list[str]:
@@ -836,9 +810,7 @@ def _subtitle_cps(text: str, duration: float) -> float:
     return round(_subtitle_reading_chars(text) / duration, 3)
 
 
-def _read_wav_stats(
-    path: Path, opening_sec: float = OPENING_SILENCE_SEC
-) -> dict[str, Any]:
+def _read_wav_stats(path: Path, opening_sec: float = OPENING_SILENCE_SEC) -> dict[str, Any]:
     try:
         with wave.open(str(path), "rb") as wav:
             channels = wav.getnchannels()
@@ -850,10 +822,7 @@ def _read_wav_stats(
         return {"ok": False, "error": str(exc)}
 
     if sample_width != 2:
-        return {
-            "ok": False,
-            "error": f"unsupported sample width: {sample_width}",
-        }
+        return {"ok": False, "error": f"unsupported sample width: {sample_width}"}
     samples = [
         int.from_bytes(raw[index : index + sample_width], "little", signed=True)
         for index in range(0, len(raw), sample_width)
@@ -903,9 +872,7 @@ def _font_fallback_lines(stderr: str, font_name: str) -> list[str]:
         if "fontselect:" not in lower or "->" not in line:
             continue
         before, after = line.split("->", 1)
-        if requested in _normalize_font_name(
-            before
-        ) and requested not in _normalize_font_name(after):
+        if requested in _normalize_font_name(before) and requested not in _normalize_font_name(after):
             lines.append(line)
     return lines
 
