@@ -2,7 +2,7 @@
 
 `inspect-render` は、FFmpegで生成済みの `output.mp4` から、Codexや人間レビューが確認しやすいPNGアーティファクトを生成するコマンドです。
 
-Phase 1では、timeline PNG生成はまだ行わず、以下の静止画を生成します。
+Phase 2では、静止画に加えて `timeline.png` を生成します。`timeline.png` は、フレームストリップ、音声波形、字幕タイムラインを縦に並べたレビュー用画像です。
 
 ```text
 renders/{project_id}/inspect/
@@ -12,6 +12,13 @@ renders/{project_id}/inspect/
   subtitle_001.png
   subtitle_002.png
   ...
+  timeline.png
+  timeline_parts/
+    frames.png
+    waveform.png
+    subtitles.png
+    timeline_frame_001.png
+    ...
   inspect_report.json
 ```
 
@@ -33,6 +40,23 @@ FFmpegがPATHにない場合は、明示的に指定します。
 - `middle.png`: 動画中央付近の確認用フレーム
 - `ending.png`: 終盤付近の確認用フレーム
 - `subtitle_XXX.png`: `subtitles.items[]` の中央時刻で抽出した字幕確認用フレーム
+- `timeline.png`: フレームストリップ、波形、字幕ブロックをまとめた確認用画像
+
+## timeline.png の構成
+
+```text
+上段:
+  動画全体から等間隔に抽出したフレームストリップ
+
+中段:
+  final_audio.wav をもとにした音声波形
+
+下段:
+  subtitles.items[] の start_sec / end_sec を使った字幕ブロック
+  CPSが高い字幕は警告色で表示
+```
+
+Python画像ライブラリを増やさないため、波形と字幕帯は標準ライブラリでPNG生成し、最終的な縦結合はFFmpegで行います。
 
 ## quality_report連携
 
@@ -50,12 +74,10 @@ FFmpegがPATHにない場合は、明示的に指定します。
     "subtitle_frame_paths": [
       "renders/trivia_xxx/inspect/subtitle_001.png"
     ],
-    "timeline_png_path": null
+    "timeline_png_path": "renders/trivia_xxx/inspect/timeline.png"
   }
 }
 ```
-
-`timeline_png_path` はPhase 2で追加予定です。
 
 ## 想定するレビュー観点
 
@@ -65,3 +87,6 @@ FFmpegがPATHにない場合は、明示的に指定します。
 - フォントやoutlineが読みやすいか
 - 明るすぎる背景で白文字が負けていないか
 - 暗すぎる背景で映像内容が分からなくなっていないか
+- 波形上で冒頭や文間の無音が長すぎないか
+- 字幕ブロックが詰まりすぎていないか
+- CPSが高い字幕が集中していないか
