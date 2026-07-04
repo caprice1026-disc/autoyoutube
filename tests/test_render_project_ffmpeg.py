@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -179,6 +180,37 @@ def test_render_project_uses_video_renderer_and_marks_video_success(
             "message": "Silent placeholder WAV files were generated from estimated durations.",
         }
     ]
+
+
+def test_render_project_saves_each_render_in_timestamped_title_directory(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project_path = tmp_path / "project.youtube.json"
+    project_path.write_text(
+        json.dumps(_project(), ensure_ascii=False), encoding="utf-8"
+    )
+    monkeypatch.setattr(render_module, "RENDERS_DIR", tmp_path / "renders")
+    monkeypatch.setattr(render_module, "init_db", lambda: None)
+    monkeypatch.setattr(render_module, "connect", lambda: NullConnection())
+    monkeypatch.setattr(render_module, "list_active_bgm_tracks", lambda connection: [])
+    monkeypatch.setattr(
+        render_module, "list_active_media_assets", lambda connection: []
+    )
+    monkeypatch.setattr(render_module, "upsert_project", lambda *args: None)
+    monkeypatch.setattr(render_module, "insert_render_summary", lambda *args: None)
+    renderer = FakeVideoRenderer()
+
+    rendered_path = render_project(project_path, video_renderer=renderer)
+
+    assert rendered_path.name == "rendered.youtube.json"
+    assert rendered_path.parent.parent == tmp_path / "renders"
+    assert re.fullmatch(
+        r"\d{12}-Deep sea facts #Shorts", rendered_path.parent.name
+    )
+    rendered = json.loads(rendered_path.read_text(encoding="utf-8"))
+    assert rendered["output"]["rendered_json_path"].replace("\\", "/").endswith(
+        f"{rendered_path.parent.name}/rendered.youtube.json"
+    )
 
 
 def test_render_project_selects_bgm_and_passes_it_to_video_renderer(
@@ -505,3 +537,30 @@ def test_render_project_wraps_long_subtitle_lines(tmp_path: Path, monkeypatch) -
     assert "\\N" in rendered["subtitles"]["items"][0]["text"]
     subtitle_ass = (rendered_path.parent / "subtitle.ass").read_text(encoding="utf-8")
     assert "\\N" in subtitle_ass
+
+
+def test_render_project_keeps_safe_subtitle_sentence_on_one_line(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project = _project()
+    safe_text = "ここで問題になるのが、マグマに含まれるガスです。"
+    project["script"][0]["text"] = safe_text
+    project_path = tmp_path / "project.youtube.json"
+    project_path.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(render_module, "RENDERS_DIR", tmp_path / "renders")
+    monkeypatch.setattr(render_module, "init_db", lambda: None)
+    monkeypatch.setattr(render_module, "connect", lambda: NullConnection())
+    monkeypatch.setattr(render_module, "list_active_bgm_tracks", lambda connection: [])
+    monkeypatch.setattr(
+        render_module, "list_active_media_assets", lambda connection: []
+    )
+    monkeypatch.setattr(render_module, "upsert_project", lambda *args: None)
+    monkeypatch.setattr(render_module, "insert_render_summary", lambda *args: None)
+    renderer = FakeVideoRenderer()
+
+    rendered_path = render_project(project_path, video_renderer=renderer)
+
+    rendered = json.loads(rendered_path.read_text(encoding="utf-8"))
+    assert rendered["subtitles"]["items"][0]["text"] == safe_text
+    subtitle_ass = (rendered_path.parent / "subtitle.ass").read_text(encoding="utf-8")
+    assert "\\N" not in subtitle_ass

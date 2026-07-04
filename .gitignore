@@ -208,7 +208,9 @@ __marimo__/
 
 # Trivia Shorts Maker generated artifacts
 data/*.db
+data/youtube_token.json
 data/aivis-engine/
+secrets/
 renders/
 assets/pexels/
 assets/bgm/*

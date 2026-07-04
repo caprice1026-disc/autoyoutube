@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import shutil
 import wave
 from datetime import datetime, timezone
@@ -90,7 +91,8 @@ def render_project(
         )
 
     project_hash = sha256_file(project_path)
-    render_dir = RENDERS_DIR / project["id"]
+    render_time = datetime.now()
+    render_dir = _next_render_dir(project, render_time)
     (render_dir / "audio").mkdir(parents=True, exist_ok=True)
     (render_dir / "video").mkdir(parents=True, exist_ok=True)
     logs_dir = render_dir / "logs"
@@ -112,7 +114,7 @@ def render_project(
     bgm_render = _build_bgm_render(project["bgm"], selected_bgm, actual_duration)
     visuals = _select_render_visuals(project, visuals)
 
-    now = datetime.now(timezone.utc)
+    now = render_time.astimezone(timezone.utc)
     render_id = f"render_{now.strftime('%Y%m%d_%H%M%S')}"
     description = _build_description(project)
     credits_required, credits_items, credits = _build_credits(selected_bgm, visuals)
@@ -172,6 +174,37 @@ def render_project(
         upsert_project(connection, project, _rel(project_path), project_hash)
         insert_render_summary(connection, rendered)
     return rendered_path
+
+
+def _next_render_dir(project: dict[str, Any], render_time: datetime) -> Path:
+    base_name = _render_dir_name(project, render_time)
+    candidate = RENDERS_DIR / base_name
+    if not candidate.exists():
+        return candidate
+
+    suffix = 2
+    while True:
+        candidate = RENDERS_DIR / f"{base_name}-{suffix}"
+        if not candidate.exists():
+            return candidate
+        suffix += 1
+
+
+def _render_dir_name(project: dict[str, Any], render_time: datetime) -> str:
+    timestamp = render_time.strftime("%Y%m%d%H%M")
+    title = (
+        project.get("youtube", {}).get("title")
+        or project.get("title")
+        or project.get("id")
+        or "render"
+    )
+    return f"{timestamp}-{_sanitize_render_dir_title(str(title))}"
+
+
+def _sanitize_render_dir_title(title: str) -> str:
+    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", title)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" .")
+    return (cleaned or "render")[:80].rstrip(" .") or "render"
 
 
 def _generate_voice_and_timing(

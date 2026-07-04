@@ -4,10 +4,9 @@ from pathlib import Path
 
 from src.render.ffmpeg_renderer import (
     FfmpegRenderRequest,
-    VisualSegment,
-    build_concat_command,
+    FfmpegVideoSegment,
+    _visual_background_segments,
     build_ffmpeg_command,
-    build_segment_command,
 )
 
 
@@ -138,11 +137,15 @@ def test_build_ffmpeg_command_can_use_background_video(tmp_path: Path) -> None:
     assert "subtitles=subtitle.ass" in video_filter
 
 
-def test_build_segment_command_crops_and_normalizes_visual_segment(tmp_path: Path) -> None:
+def test_build_ffmpeg_command_concatenates_background_video_segments(
+    tmp_path: Path,
+) -> None:
     render_dir = tmp_path / "render"
+    first_path = tmp_path / "assets" / "street.mp4"
+    second_path = tmp_path / "assets" / "lights.mp4"
     request = FfmpegRenderRequest(
         render_dir=render_dir,
-        duration_sec=10,
+        duration_sec=5.0,
         width=1080,
         height=1920,
         fps=30,
@@ -153,60 +156,71 @@ def test_build_segment_command_crops_and_normalizes_visual_segment(tmp_path: Pat
         video_codec="libx264",
         audio_codec="aac",
         pix_fmt="yuv420p",
-    )
-    segment = VisualSegment(
-        index=1,
-        input_path=tmp_path / "assets" / "clip.mp4",
-        output_path=render_dir / "video_segments" / "segment_001.mp4",
-        start_sec=0,
-        duration_sec=3.2,
-        used_start_sec=1.5,
+        background_video_segments=[
+            FfmpegVideoSegment(path=first_path, duration_sec=2.0),
+            FfmpegVideoSegment(path=second_path, duration_sec=3.0),
+        ],
     )
 
-    command = build_segment_command(segment, request, Path("ffmpeg"))
+    command = build_ffmpeg_command(request, Path("ffmpeg"))
 
-    assert command[:8] == ["ffmpeg", "-y", "-stream_loop", "-1", "-ss", "1.500", "-i", str(segment.input_path)]
-    assert "-t" in command
-    assert command[command.index("-t") + 1] == "3.200"
-    video_filter = command[command.index("-vf") + 1]
-    assert "scale=1080:1920:force_original_aspect_ratio=increase" in video_filter
-    assert "crop=1080:1920" in video_filter
-    assert "fps=30" in video_filter
-    assert "-an" in command
-    assert command[-1] == "video_segments/segment_001.mp4"
+    assert command.count("-stream_loop") == 2
+    assert first_path.as_posix() in command
+    assert second_path.as_posix() in command
+    assert "-vf" not in command
+    assert "-filter_complex" in command
+    filter_complex = command[command.index("-filter_complex") + 1]
+    assert "trim=duration=2.000,setpts=PTS-STARTPTS" in filter_complex
+    assert "trim=duration=3.000,setpts=PTS-STARTPTS" in filter_complex
+    assert "concat=n=2:v=1:a=0[vcat]" in filter_complex
+    assert "subtitles=subtitle.ass[vout]" in filter_complex
+    assert command[-16:] == [
+        "-shortest",
+        "-t",
+        "5.000",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-r",
+        "30",
+        "-c:a",
+        "aac",
+        "-map",
+        "[vout]",
+        "-map",
+        "2:a",
+        "output.mp4",
+    ]
 
 
-def test_build_concat_command_uses_concat_demuxer(tmp_path: Path) -> None:
-    render_dir = tmp_path / "render"
-    request = FfmpegRenderRequest(
-        render_dir=render_dir,
-        duration_sec=10,
-        width=1080,
-        height=1920,
-        fps=30,
-        audio_path=render_dir / "audio" / "final_audio.wav",
-        subtitle_path=render_dir / "subtitle.ass",
-        output_path=render_dir / "output.mp4",
-        logs_dir=render_dir / "logs",
-        video_codec="libx264",
-        audio_codec="aac",
-        pix_fmt="yuv420p",
-    )
-    concat_list = render_dir / "video_segments" / "concat.txt"
-    output = render_dir / "video" / "background_timeline.mp4"
+def test_visual_background_segments_include_gap_until_next_visual(
+    tmp_path: Path,
+) -> None:
+    first_path = tmp_path / "street.mp4"
+    second_path = tmp_path / "lights.mp4"
+    first_path.write_bytes(b"first")
+    second_path.write_bytes(b"second")
+    visuals = [
+        {
+            "asset_id": "street",
+            "local_file_path": str(first_path),
+            "video_start_sec": 0.0,
+            "video_end_sec": 1.0,
+            "used_duration_sec": 1.0,
+        },
+        {
+            "asset_id": "lights",
+            "local_file_path": str(second_path),
+            "video_start_sec": 1.4,
+            "video_end_sec": 3.0,
+            "used_duration_sec": 1.6,
+        },
+    ]
 
-    command = build_concat_command(concat_list, output, request, Path("ffmpeg"))
+    segments = _visual_background_segments(visuals)
 
-    assert command == [
-        "ffmpeg",
-        "-y",
-        "-f",
-        "concat",
-        "-safe",
-        "0",
-        "-i",
-        "video_segments/concat.txt",
-        "-c",
-        "copy",
-        "video/background_timeline.mp4",
+    assert segments == [
+        FfmpegVideoSegment(path=first_path, duration_sec=1.4),
+        FfmpegVideoSegment(path=second_path, duration_sec=1.6),
     ]
