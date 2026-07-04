@@ -193,8 +193,8 @@ def _next_render_dir(project: dict[str, Any], render_time: datetime) -> Path:
 def _render_dir_name(project: dict[str, Any], render_time: datetime) -> str:
     timestamp = render_time.strftime("%Y%m%d%H%M")
     title = (
-        project.get("youtube", {}).get("title")
-        or project.get("title")
+        project.get("title")
+        or project.get("youtube", {}).get("title")
         or project.get("id")
         or "render"
     )
@@ -202,6 +202,7 @@ def _render_dir_name(project: dict[str, Any], render_time: datetime) -> str:
 
 
 def _sanitize_render_dir_title(title: str) -> str:
+    title = re.sub(r"\s*#[^\s#]+", "", title)
     cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", title)
     cleaned = re.sub(r"\s+", " ", cleaned).strip(" .")
     return (cleaned or "render")[:80].rstrip(" .") or "render"

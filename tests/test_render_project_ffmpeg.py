@@ -205,7 +205,7 @@ def test_render_project_saves_each_render_in_timestamped_title_directory(
     assert rendered_path.name == "rendered.youtube.json"
     assert rendered_path.parent.parent == tmp_path / "renders"
     assert re.fullmatch(
-        r"\d{12}-Deep sea facts #Shorts", rendered_path.parent.name
+        r"\d{12}-Deep sea facts", rendered_path.parent.name
     )
     rendered = json.loads(rendered_path.read_text(encoding="utf-8"))
     assert rendered["output"]["rendered_json_path"].replace("\\", "/").endswith(

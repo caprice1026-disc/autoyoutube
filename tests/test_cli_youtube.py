@@ -71,3 +71,30 @@ def test_upload_youtube_cli_uses_private_uploader(monkeypatch, capsys) -> None:
     assert calls == [(Path("renders/sample/rendered.youtube.json"), "private")]
     assert "YouTube upload complete: abc123" in captured.out
     assert "https://www.youtube.com/watch?v=abc123" in captured.out
+
+
+def test_upload_youtube_cli_accepts_render_directory(monkeypatch, capsys) -> None:
+    calls: list[tuple[Path, str]] = []
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["tsm", "upload-youtube", "renders/sample"],
+    )
+
+    def fake_upload_private_video(
+        rendered_path: Path, *, privacy_status: str
+    ) -> FakeUploadResult:
+        calls.append((rendered_path, privacy_status))
+        return FakeUploadResult(
+            video_id="abc123",
+            watch_url="https://www.youtube.com/watch?v=abc123",
+        )
+
+    monkeypatch.setattr(main_module, "upload_private_video", fake_upload_private_video)
+
+    exit_code = main_module.main()
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert calls == [(Path("renders/sample/rendered.youtube.json"), "private")]
+    assert "YouTube upload complete: abc123" in captured.out

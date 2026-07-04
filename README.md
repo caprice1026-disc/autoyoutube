@@ -2,7 +2,7 @@
 
 YouTube Shorts向けの雑学ショート動画を、ローカル環境で半自動生成するためのPythonプロジェクトです。`project.youtube.json` を入力にして、音声、字幕、BGM、縦型MP4、投稿用メタデータ、検証ログを生成します。
 
-現時点では、完全自動投稿ではなく「生成物を作り、手動レビューしてから投稿する」MVPです。
+現時点では、完全自動公開ではなく「生成物を作り、YouTubeへprivate投稿してから公開判断する」MVPです。
 
 ## 現在できること
 
@@ -194,7 +194,7 @@ download先は `assets/pexels/` です。登録後のrenderは、既存の `medi
 
 ## YouTube private upload
 
-YouTubeアップロードは `private` のみ対応します。`public` / `unlisted` はCLIで受け付けません。アップロード前に、`output.mp4`、`description.txt`、`credits.txt`、`quality_report.json` が存在し、`quality_report.json` の `summary.error_count` が0で、`rendered.youtube.json` の `manual_review.checked` と `manual_review.publish_ready` が `true` である必要があります。
+YouTubeアップロードは `private` のみ対応します。`public` / `unlisted` はCLIで受け付けません。アップロード前に、`output.mp4`、`description.txt`、`credits.txt`、`quality_report.json` が存在し、`quality_report.json` の `summary.error_count` が0である必要があります。
 
 OAuthクライアントシークレットは `secrets/client_secret.json` に置きます。取得したトークンは `data/youtube_token.json` に保存され、どちらもGit管理しません。
 
@@ -230,7 +230,7 @@ AivisSpeech Engineのモデルやログは `data/aivis-engine/` に保存され�
 
 ## 生成される主なファイル
 
-`render` は `renders/YYYYMMDDHHMM-タイトル/` に以下を生成します。同じ分に同じタイトルで複数回renderした場合は、ディレクトリ名の末尾に `-2`, `-3` のような連番が付きます。
+`render` は `renders/YYYYMMDDHHMM-タイトル/` に以下を生成します。ディレクトリ名はPowerShellで扱いやすいように `#Shorts` などのハッシュタグを除いたタイトルを使いますが、YouTube投稿用のtitle/description/hashtagsは変更しません。同じ分に同じタイトルで複数回renderした場合は、ディレクトリ名の末尾に `-2`, `-3` のような連番が付きます。
 
 - `output.mp4`
 - `rendered.youtube.json`

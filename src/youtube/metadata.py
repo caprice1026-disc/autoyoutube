@@ -28,14 +28,15 @@ def load_upload_metadata(
 
     rendered_path = rendered_path.resolve()
     rendered = load_json(rendered_path)
-    _validate_upload_preconditions(rendered, rendered_path)
     output = rendered["output"]
-    youtube = rendered["youtube"]
-    video_path = _resolve_path(output["video_path"])
-    description = _description_with_credits(
-        _resolve_path(output["description_path"]),
-        _resolve_path(output["credits_path"]),
+    video_path = _resolve_render_file(output["video_path"], rendered_path)
+    description_path = _resolve_render_file(output["description_path"], rendered_path)
+    credits_path = _resolve_render_file(output["credits_path"], rendered_path)
+    _validate_upload_preconditions(
+        rendered_path, video_path, description_path, credits_path
     )
+    youtube = rendered["youtube"]
+    description = _description_with_credits(description_path, credits_path)
     body = {
         "snippet": {
             "title": str(youtube["title"]),
@@ -58,32 +59,20 @@ def load_upload_metadata(
     )
 
 
-def _validate_upload_preconditions(rendered: dict[str, Any], rendered_path: Path) -> None:
-    manual_review = rendered.get("manual_review", {})
-    if manual_review.get("checked") is not True:
+def _validate_upload_preconditions(
+    rendered_path: Path,
+    video_path: Path,
+    description_path: Path,
+    credits_path: Path,
+) -> None:
+    if not video_path.is_file() or video_path.stat().st_size == 0:
         raise AppError(
-            "Manual review is not checked.",
-            location=str(rendered_path),
-            next_step="Review output.mp4, credits, and facts, then set manual_review.checked=true.",
+            "Output video is missing or empty.",
+            location=str(video_path),
+            next_step="Run render again and confirm output.mp4 exists.",
         )
-    if manual_review.get("publish_ready") is not True:
-        raise AppError(
-            "Render is not marked publish-ready.",
-            location=str(rendered_path),
-            next_step="After human review, set manual_review.publish_ready=true before upload.",
-        )
-
-    output = rendered.get("output", {})
-    for field in ["video_path", "description_path", "credits_path"]:
-        path = _resolve_path(str(output.get(field) or ""))
-        if field == "video_path":
-            if not path.is_file() or path.stat().st_size == 0:
-                raise AppError(
-                    "Output video is missing or empty.",
-                    location=str(path),
-                    next_step="Run render again and confirm output.mp4 exists.",
-                )
-        elif not path.is_file():
+    for path in [description_path, credits_path]:
+        if not path.is_file():
             raise AppError(
                 "Required upload metadata file is missing.",
                 location=str(path),
@@ -136,3 +125,13 @@ def _resolve_path(path_text: str) -> Path:
     if path.is_absolute():
         return path
     return Path.cwd() / path
+
+
+def _resolve_render_file(path_text: str, rendered_path: Path) -> Path:
+    path = _resolve_path(path_text)
+    if path.exists():
+        return path
+    sibling = rendered_path.parent / Path(path_text).name
+    if sibling.exists():
+        return sibling
+    return path

@@ -14,6 +14,7 @@ def _write_render_files(
     *,
     manual_checked: bool = True,
     quality_error_count: int = 0,
+    stale_output_paths: bool = False,
 ) -> Path:
     render_dir = tmp_path / "render"
     render_dir.mkdir()
@@ -26,12 +27,13 @@ def _write_render_files(
         json.dumps({"summary": {"error_count": quality_error_count}}),
         encoding="utf-8",
     )
+    output_dir = tmp_path / "render #Shorts" if stale_output_paths else render_dir
     rendered = {
         "project_id": "sample",
         "output": {
-            "video_path": str(render_dir / "output.mp4"),
-            "description_path": str(render_dir / "description.txt"),
-            "credits_path": str(render_dir / "credits.txt"),
+            "video_path": str(output_dir / "output.mp4"),
+            "description_path": str(output_dir / "description.txt"),
+            "credits_path": str(output_dir / "credits.txt"),
         },
         "youtube": {
             "title": "Sample Title #Shorts",
@@ -83,11 +85,25 @@ def test_load_upload_metadata_rejects_non_private_privacy(tmp_path: Path) -> Non
         load_upload_metadata(rendered_path, privacy_status="unlisted")
 
 
-def test_load_upload_metadata_requires_manual_review_checked(tmp_path: Path) -> None:
+def test_load_upload_metadata_does_not_require_manual_review_checked(
+    tmp_path: Path,
+) -> None:
     rendered_path = _write_render_files(tmp_path, manual_checked=False)
 
-    with pytest.raises(AppError, match="Manual review is not checked"):
-        load_upload_metadata(rendered_path, privacy_status="private")
+    metadata = load_upload_metadata(rendered_path, privacy_status="private")
+
+    assert metadata.video_path == rendered_path.parent / "output.mp4"
+
+
+def test_load_upload_metadata_uses_render_dir_file_when_json_output_path_is_stale(
+    tmp_path: Path,
+) -> None:
+    rendered_path = _write_render_files(tmp_path, stale_output_paths=True)
+
+    metadata = load_upload_metadata(rendered_path, privacy_status="private")
+
+    assert metadata.video_path == rendered_path.parent / "output.mp4"
+    assert metadata.body["snippet"]["description"].startswith("Main description")
 
 
 def test_load_upload_metadata_requires_quality_report_without_errors(

@@ -271,7 +271,9 @@ class FfmpegVideoRenderer:
             background_video_path=video_segments[0].path
             if len(video_segments) == 1
             else None,
-            background_video_segments=video_segments if len(video_segments) > 1 else None,
+            background_video_segments=(
+                video_segments if len(video_segments) > 1 else None
+            ),
             bgm_path=Path(bgm["file_path"]) if bgm else None,
             bgm_volume_db=float(bgm["volume_db"]) if bgm else DEFAULT_BGM_VOLUME_DB,
             bgm_fade_in_sec=float(bgm["fade_in_ms"]) / 1000
@@ -281,23 +283,10 @@ class FfmpegVideoRenderer:
             if bgm
             else DEFAULT_BGM_FADE_OUT_MS / 1000,
         )
-        background_path, timeline_commands = _prepare_background_video(
-            visuals,
-            base_request,
-            self.ffmpeg_path,
-        )
-        request = FfmpegRenderRequest(
-            **{
-                **base_request.__dict__,
-                "background_video_path": background_path,
-            }
-        )
         command = build_ffmpeg_command(request, self.ffmpeg_path)
         command_log_path = logs_dir / "ffmpeg_command.txt"
         stderr_log_path = logs_dir / "ffmpeg_stderr.log"
-        command_log_path.write_text(
-            _format_command_log(timeline_commands + [command]), encoding="utf-8"
-        )
+        command_log_path.write_text(_format_command_log([command]), encoding="utf-8")
 
         result = subprocess.run(command, cwd=render_dir, capture_output=True, text=True)
         stderr_log_path.write_text(result.stderr, encoding="utf-8")
@@ -442,6 +431,15 @@ def _video_filter(request: FfmpegRenderRequest) -> str:
         f"scale={request.width}:{request.height}:force_original_aspect_ratio=increase,"
         f"crop={request.width}:{request.height},"
         f"{subtitle_filter}"
+    )
+
+
+def _segment_video_filter(request: FfmpegRenderRequest) -> str:
+    return (
+        f"scale={request.width}:{request.height}:force_original_aspect_ratio=increase,"
+        f"crop={request.width}:{request.height},"
+        f"fps={request.fps},"
+        "setsar=1"
     )
 
 

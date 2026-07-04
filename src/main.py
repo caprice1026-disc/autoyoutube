@@ -319,6 +319,37 @@ def _fetch_pexels(
     return 0
 
 
+def _fetch_visuals(
+    project_path: Path,
+    *,
+    output_dir: Path,
+    per_query: int,
+    max_downloads: int | None,
+    orientation: str | None,
+    size: str | None,
+    plan_path: Path | None,
+) -> int:
+    client = PexelsClient()
+    result = fetch_visuals_for_project(
+        project_path,
+        client=client,
+        output_dir=output_dir,
+        per_query=per_query,
+        max_downloads=max_downloads,
+        orientation=orientation,
+        size=size,
+        plan_path=plan_path,
+    )
+    init_db()
+    with connect() as connection:
+        upsert_media_assets(connection, result.assets)
+    print(f"Fetched visual assets: {len(result.assets)}")
+    print(f"Visual plan written: {result.plan_path}")
+    for asset in result.assets:
+        print(f"{asset.asset_id}\t{asset.query}\t{asset.local_file_path}")
+    return 0
+
+
 def _youtube_auth(client_secrets_path: Path, token_path: Path) -> int:
     authorize_youtube_upload(client_secrets_path, token_path)
     print(f"YouTube OAuth token ready: {token_path.as_posix()}")
@@ -326,10 +357,18 @@ def _youtube_auth(client_secrets_path: Path, token_path: Path) -> int:
 
 
 def _upload_youtube(rendered_path: Path, *, privacy: str) -> int:
-    result = upload_private_video(rendered_path, privacy_status=privacy)
+    result = upload_private_video(
+        _resolve_rendered_path(rendered_path), privacy_status=privacy
+    )
     print(f"YouTube upload complete: {result.video_id}")
     print(result.watch_url)
     return 0
+
+
+def _resolve_rendered_path(path: Path) -> Path:
+    if path.suffix.lower() == ".json":
+        return path
+    return path / "rendered.youtube.json"
 
 
 def _pexels_queries_from_project(project_path: Path) -> list[str]:
