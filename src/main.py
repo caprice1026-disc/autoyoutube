@@ -18,8 +18,10 @@ from src.env import load_dotenv
 from src.errors import AppError
 from src.media.library import load_media_manifest
 from src.media.pexels_client import PexelsClient
+from src.media.visual_fetcher import fetch_visuals_for_project
 from src.pipeline.render_project import render_project
 from src.quality.evaluator import evaluate_render
+from src.quality.inspector import inspect_render
 from src.render.ffmpeg_renderer import FfmpegVideoRenderer
 from src.validators.json_validator import load_json, validate_json_file
 from src.voice.aivis_client import AivisSpeechClient
@@ -42,6 +44,11 @@ def main() -> int:
         "evaluate-render", help="write quality_report.json for a render"
     )
     er.add_argument("path")
+    ir = sub.add_parser(
+        "inspect-render", help="extract screenshot artifacts for a rendered video"
+    )
+    ir.add_argument("path")
+    ir.add_argument("--ffmpeg-path")
     ib = sub.add_parser("import-bgm", help="import BGM tracks from a manifest JSON")
     ib.add_argument("manifest_path")
     sub.add_parser("list-bgm", help="list active BGM tracks")
@@ -62,6 +69,17 @@ def main() -> int:
     fp.add_argument("--max-downloads", type=int)
     fp.add_argument("--orientation", default="portrait")
     fp.add_argument("--size", default="small")
+    fv = sub.add_parser(
+        "fetch-visuals",
+        help="fetch and score Pexels visual candidates for a project JSON",
+    )
+    fv.add_argument("project_path")
+    fv.add_argument("--output-dir", default="assets/pexels")
+    fv.add_argument("--per-query", type=int, default=3)
+    fv.add_argument("--max-downloads", type=int)
+    fv.add_argument("--orientation", default="portrait")
+    fv.add_argument("--size", default="small")
+    fv.add_argument("--plan-path")
     rr = sub.add_parser("render", help="render project assets")
     rr.add_argument("path")
     rr.add_argument("--voice-mode", choices=["dry-run", "aivis"], default="dry-run")
@@ -90,6 +108,8 @@ def main() -> int:
             return _validate(Path(args.path), RENDERED_SCHEMA_PATH, "rendered JSON")
         if args.command == "evaluate-render":
             return _evaluate_render(Path(args.path))
+        if args.command == "inspect-render":
+            return _inspect_render(Path(args.path), args.ffmpeg_path)
         if args.command == "import-bgm":
             return _import_bgm(Path(args.manifest_path))
         if args.command == "list-bgm":
@@ -113,6 +133,16 @@ def main() -> int:
                 max_downloads=args.max_downloads,
                 orientation=args.orientation,
                 size=args.size,
+            )
+        if args.command == "fetch-visuals":
+            return _fetch_visuals(
+                Path(args.project_path),
+                output_dir=Path(args.output_dir),
+                per_query=args.per_query,
+                max_downloads=args.max_downloads,
+                orientation=args.orientation,
+                size=args.size,
+                plan_path=Path(args.plan_path) if args.plan_path else None,
             )
         if args.command == "render":
             voice_service = (
@@ -172,6 +202,16 @@ def _validate(json_path: Path, schema_path: Path, label: str) -> int:
 def _evaluate_render(rendered_path: Path) -> int:
     evaluate_render(rendered_path)
     print(f"Quality report written: {rendered_path.parent / 'quality_report.json'}")
+    return 0
+
+
+def _inspect_render(rendered_path: Path, ffmpeg_path: str | None) -> int:
+    report = inspect_render(rendered_path, ffmpeg_path=ffmpeg_path)
+    print(f"Inspect artifacts written: {report['inspect_dir']}")
+    print(f"Summary screenshots: {len(report['screenshot_paths'])}")
+    print(f"Subtitle frames: {len(report['subtitle_frame_paths'])}")
+    if report.get("timeline_png_path"):
+        print(f"Timeline PNG: {report['timeline_png_path']}")
     return 0
 
 
@@ -312,14 +352,14 @@ def _pexels_queries_from_project(project_path: Path) -> list[str]:
 
 def _unique_non_empty(values: list[str]) -> list[str]:
     seen: set[str] = set()
-    result: list[str] = []
+    output: list[str] = []
     for value in values:
-        cleaned = value.strip()
-        key = cleaned.lower()
-        if cleaned and key not in seen:
-            seen.add(key)
-            result.append(cleaned)
-    return result
+        normalized = value.strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        output.append(normalized)
+    return output
 
 
 if __name__ == "__main__":

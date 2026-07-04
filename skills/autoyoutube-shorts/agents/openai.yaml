@@ -1,0 +1,5 @@
+interface:
+  display_name: Autoyoutube Shorts
+  short_description: Local YouTube Shorts generation, inspection, and Codex repair workflow for autoyoutube.
+  icon: video
+  accent_color: blue
