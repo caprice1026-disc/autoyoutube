@@ -173,6 +173,7 @@ def test_render_project_uses_video_renderer_and_marks_video_success(
     assert renderer.calls[0]["duration_sec"] == 3.2
     assert (rendered_path.parent / "output.mp4").read_bytes() == b"fake mp4"
     assert rendered["status"] == "success"
+    assert "manual_review" not in rendered
     assert rendered["ffmpeg"]["version"] == "ffmpeg test"
     assert rendered["validation"]["warnings"] == [
         {

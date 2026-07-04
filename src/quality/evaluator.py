@@ -56,7 +56,6 @@ def evaluate_render(
     checks.extend(_bgm_checks(rendered))
     checks.extend(_ffmpeg_checks(rendered))
     checks.extend(_visual_checks(rendered))
-    checks.extend(_manual_review_checks(rendered))
     metrics = _metrics(rendered, probe_result, audio_metrics)
     status = _status(checks)
     report = {
@@ -650,22 +649,6 @@ def _visual_checks(rendered: dict[str, Any]) -> list[dict[str, Any]]:
             )
         previous_asset_id = str(asset_id) if asset_id else None
     return checks
-
-
-def _manual_review_checks(rendered: dict[str, Any]) -> list[dict[str, Any]]:
-    if rendered.get("manual_review", {}).get("required") is True:
-        return []
-    return [
-        _check(
-            "MANUAL_REVIEW_DISABLED",
-            "error",
-            "manual_review.required",
-            "manual_review.required が true ではありません。",
-            "投稿前の人間レビューを必須にしてください。",
-            auto_fixable=True,
-            codex_hint="Keep manual_review.required true until explicit human review is recorded.",
-        )
-    ]
 
 
 def _metrics(

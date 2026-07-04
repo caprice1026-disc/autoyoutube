@@ -24,8 +24,7 @@
         "thumbnail",
         "credits",
         "ffmpeg",
-        "validation",
-        "manual_review"
+        "validation"
     ],
     "properties": {
         "schema_version": {

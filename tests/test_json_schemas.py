@@ -122,7 +122,17 @@ def test_rendered_schema_requires_validation_message_code_and_message() -> None:
     assert any("message" in error.message for error in errors)
 
 
-def test_rendered_schema_requires_manual_review_publish_ready() -> None:
+def test_rendered_schema_allows_private_upload_without_manual_review() -> None:
+    schema = _load_json(RENDERED_SCHEMA_PATH)
+    rendered = _valid_rendered_json()
+    del rendered["manual_review"]
+
+    errors = list(Draft202012Validator(schema).iter_errors(rendered))
+
+    assert errors == []
+
+
+def test_rendered_schema_validates_legacy_manual_review_when_present() -> None:
     schema = _load_json(RENDERED_SCHEMA_PATH)
     rendered = _valid_rendered_json()
     del rendered["manual_review"]["publish_ready"]

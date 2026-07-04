@@ -8,7 +8,7 @@ YouTube Shorts向けの雑学ショート動画を、ローカル環境で半自
 
 - `project.youtube.json` / `rendered.youtube.json` のJSON Schema検証
 - `voice.style_id` の任意指定と、AivisSpeech生成時のstyle ID優先利用
-- `rendered.youtube.json` の音声、映像、字幕、credits、validation、manual_review構造の厳密検証
+- `rendered.youtube.json` の音声、映像、字幕、credits、validation構造の厳密検証
 - SQLite DB初期化とproject/render履歴の保存
 - AivisSpeech API連携、またはdry-run無音WAV生成
 - WAVの実測時間に基づく字幕タイミング生成
@@ -28,7 +28,7 @@ YouTube Shorts向けの雑学ショート動画を、ローカル環境で半自
 未実装または今後の実装対象:
 
 - thumbnail.jpg生成
-- 手動レビュー状態更新CLI
+- YouTube private upload後にYouTube上で最終レビューする運用
 - thumbnail upload / upload status確認 / Analytics連携
 
 ## セットアップ
@@ -108,7 +108,7 @@ $env:AIVIS_SPEECH_BASE_URL = "http://127.0.0.1:10101"
 }
 ```
 
-`rendered.youtube.json` は、`audio.narration_files[]`, `visuals[]`, `subtitles.items[]`, `credits.items[]`, `ffmpeg`, `youtube.upload`, `validation.warnings[]`, `validation.errors[]`, `manual_review` の主要フィールドを厳密に検証します。creditsは `type` ではなく `credit_type` に統一しています。
+`rendered.youtube.json` は、`audio.narration_files[]`, `visuals[]`, `subtitles.items[]`, `credits.items[]`, `ffmpeg`, `youtube.upload`, `validation.warnings[]`, `validation.errors[]` の主要フィールドを厳密に検証します。古いrender出力に残っている `manual_review` は互換用の任意フィールドとして受け付けます。creditsは `type` ではなく `credit_type` に統一しています。
 
 `render` の既定は `--video-mode dry-run` なので、FFmpegを実行しない検証用renderになります。実MP4生成では `--video-mode ffmpeg` を指定してください。
 
@@ -248,7 +248,7 @@ AivisSpeech Engineのモデルやログは `data/aivis-engine/` に保存され�
 
 ## 品質検査
 
-`evaluate-render` は、生成済みの `rendered.youtube.json` と実ファイルを検査し、同じrenderディレクトリに `quality_report.json` を出力します。初期チェックでは、必須ファイル欠落、空のoutput.mp4、BGM credit漏れ、Pexels credit漏れ、字幕長、字幕表示時間、BGM音量、manual review必須状態を見ます。
+`evaluate-render` は、生成済みの `rendered.youtube.json` と実ファイルを検査し、同じrenderディレクトリに `quality_report.json` を出力します。初期チェックでは、必須ファイル欠落、空のoutput.mp4、BGM credit漏れ、Pexels credit漏れ、字幕長、字幕表示時間、BGM音量を見ます。公開可否のレビューは、`upload-youtube` で private 投稿した後にYouTube上で行う前提です。
 
 ```powershell
 .\.venv\Scripts\python.exe -m src.main evaluate-render renders\YYYYMMDDHHMM-タイトル\rendered.youtube.json

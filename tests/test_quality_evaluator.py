@@ -277,6 +277,40 @@ def test_evaluate_render_writes_quality_report_with_initial_checks(
     assert written == report
 
 
+def test_evaluate_render_does_not_require_manual_review(tmp_path: Path) -> None:
+    from src.quality.evaluator import evaluate_render
+
+    render_dir = tmp_path / "render"
+    (render_dir / "logs").mkdir(parents=True)
+    (render_dir / "output.mp4").write_bytes(b"fake mp4")
+    (render_dir / "bgm.mp3").write_bytes(b"fake bgm")
+    (render_dir / "video.mp4").write_bytes(b"fake video")
+    (render_dir / "subtitle.ass").write_text("subtitle", encoding="utf-8")
+    (render_dir / "description.txt").write_text("description", encoding="utf-8")
+    (render_dir / "credits.txt").write_text("", encoding="utf-8")
+    (render_dir / "logs" / "ffmpeg_command.txt").write_text("ffmpeg", encoding="utf-8")
+    (render_dir / "logs" / "ffmpeg_stderr.log").write_text("", encoding="utf-8")
+    _write_constant_wav(render_dir / "audio" / "final_audio.wav")
+    rendered = _rendered(render_dir)
+    del rendered["manual_review"]
+    rendered_path = render_dir / "rendered.youtube.json"
+    rendered_path.write_text(json.dumps(rendered, ensure_ascii=False), encoding="utf-8")
+
+    report = evaluate_render(
+        rendered_path,
+        video_probe=lambda _path: {
+            "duration_sec": 3.0,
+            "width": 1080,
+            "height": 1920,
+            "fps": 30.0,
+        },
+    )
+
+    assert "MANUAL_REVIEW_REQUIRED" not in {
+        check["code"] for check in report["checks"]
+    }
+
+
 def test_evaluate_render_reports_missing_and_empty_files(tmp_path: Path) -> None:
     from src.quality.evaluator import evaluate_render
 

@@ -449,13 +449,6 @@ def _build_rendered(
             "warnings": warnings,
             "errors": [],
         },
-        "manual_review": {
-            "required": True,
-            "fact_check_required": project["manual_fact_check_required"],
-            "checked": False,
-            "publish_ready": False,
-            "notes": "Manual fact check and quality review are required before publishing.",
-        },
     }
 
 

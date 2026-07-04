@@ -168,7 +168,6 @@ def insert_render_summary(
             vf["pix_fmt"],
         ),
     )
-    mr = rendered["manual_review"]
     voice = rendered["voice"]
     connection.execute(
         """
@@ -190,17 +189,19 @@ def insert_render_summary(
             voice["audio_format"],
         ),
     )
-    connection.execute(
-        "INSERT INTO render_manual_reviews (render_id, required, fact_check_required, checked, publish_ready, notes) VALUES (?, ?, ?, ?, ?, ?)",
-        (
-            rendered["render_id"],
-            int(mr["required"]),
-            int(mr["fact_check_required"]),
-            int(mr["checked"]),
-            int(mr["publish_ready"]),
-            mr["notes"],
-        ),
-    )
+    mr = rendered.get("manual_review")
+    if mr is not None:
+        connection.execute(
+            "INSERT INTO render_manual_reviews (render_id, required, fact_check_required, checked, publish_ready, notes) VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                rendered["render_id"],
+                int(mr["required"]),
+                int(mr["fact_check_required"]),
+                int(mr["checked"]),
+                int(mr["publish_ready"]),
+                mr["notes"],
+            ),
+        )
     bgm = rendered["bgm"]
     connection.execute(
         """

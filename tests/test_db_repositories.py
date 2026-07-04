@@ -227,3 +227,23 @@ def test_insert_render_summary_saves_voice_style_id(tmp_path: Path) -> None:
         ).fetchone()
 
     assert dict(row) == {"speaker": "まお", "voice_style_id": 888753760}
+
+def test_insert_render_summary_allows_missing_manual_review(tmp_path: Path) -> None:
+    db_path = tmp_path / "test.db"
+    init_db(db_path)
+    project = _project(style_id=888753760)
+    rendered = _rendered(project)
+    del rendered["manual_review"]
+
+    with sqlite3.connect(db_path) as connection:
+        connection.row_factory = sqlite3.Row
+        upsert_project(
+            connection, project, "projects/sample/project.youtube.json", "hash"
+        )
+        insert_render_summary(connection, rendered)
+        review_row = connection.execute(
+            "SELECT render_id FROM render_manual_reviews WHERE render_id = ?",
+            (rendered["render_id"],),
+        ).fetchone()
+
+    assert review_row is None
