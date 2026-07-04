@@ -16,15 +16,16 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
 
 - [x] (2026-07-04) 既存の Skill 定義と参考資料を読み、現行の前提を確認した。
 - [x] (2026-07-04) 実運用のレンダー結果を踏まえ、改善点を整理した。
-- [ ] Skill 本体と参照ファイルを更新する。
-- [ ] `quick_validate.py` または同等の Skill 検証を通す。
-- [ ] 必要なら repo 側の Skill 更新を commit / push する。
+- [x] (2026-07-04) Skill 本体と参照ファイルを更新した。
+- [x] (2026-07-04) `quick_validate.py` を UTF-8 前提で通した。
+- [x] (2026-07-04) repo 側の Skill 更新を commit / push した。
 
 ## Surprises & Discoveries
 
 - `inspect-render` は Windows の既定文字コードだと FFmpeg 出力の解釈に失敗することがある。
 - 1 本の動画で同じ Pexels 素材が再利用されると、評価上は `SAME_ASSET_REUSED` として扱うべきだった。
 - 実レンダーでは字幕が長すぎると見切れるため、目安となる安全な長さを Skill に明示した方がよい。
+- Skill の日本語文面を含むファイルは `quick_validate.py` で UTF-8 モードが必要だった。
 
 ## Decision Log
 
@@ -40,9 +41,14 @@ This ExecPlan is a living document. The sections `Progress`, `Surprises & Discov
   Rationale: 視聴体験の低下を避けるため、検出した時点で再取得・再レンダーに戻す方がよい。
   Date/Author: 2026-07-04 / Codex
 
+- Decision: Skill の検証は `PYTHONUTF8=1` を付けて実行する。
+  Rationale: 日本語を含む Skill ファイルを Python の既定文字コードで読むと `quick_validate.py` が失敗するため。
+  Date/Author: 2026-07-04 / Codex
+
 ## Outcomes & Retrospective
 
-更新後の Skill は、台本から project JSON を組み、Pexels と BGM を選び、AivisSpeech と FFmpeg でレンダーし、品質検査を回し、private upload までを一貫して案内する。実運用で判明した失敗点を反映し、再現性の高い手順に寄せる。
+更新後の Skill は、台本から project JSON を組み、Pexels と BGM を選び、AivisSpeech と FFmpeg でレンダーし、品質検査を回し、private upload までを一貫して案内する。実運用で判明した失敗点を反映し、再現性の高い手順に寄せた。
+`quick_validate.py` は UTF-8 モードで両方の Skill を通過した。repo 側の変更は commit して `origin/master` に push した。
 
 ## Context and Orientation
 
