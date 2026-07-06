@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from src.errors import AppError
+from src.utils.file_hash import sha256_file
 from src.validators.json_validator import load_json
 
 
@@ -42,6 +43,25 @@ def load_media_manifest(path: Path) -> list[MediaAsset]:
         _parse_asset(item, path.parent, path, index)
         for index, item in enumerate(assets_raw, start=1)
     ]
+
+
+def media_asset_source_key(asset: MediaAsset) -> str:
+    if asset.source == "pexels":
+        if asset.pexels_id:
+            return f"pexels:{asset.pexels_id}"
+        if asset.original_video_url:
+            return f"pexels-url:{asset.original_video_url}"
+
+    if asset.local_file_path.is_file():
+        try:
+            return sha256_file(asset.local_file_path)
+        except OSError:
+            pass
+
+    try:
+        return f"path:{asset.local_file_path.resolve()}"
+    except OSError:
+        return f"path:{asset.local_file_path.as_posix()}"
 
 
 def _parse_asset(

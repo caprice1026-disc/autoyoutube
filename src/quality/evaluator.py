@@ -28,6 +28,7 @@ from src.defaults import (
     TARGET_WIDTH,
 )
 from src.errors import AppError
+from src.utils.file_hash import sha256_file
 from src.validators.json_validator import load_json
 
 VideoProbe = Callable[[Path], dict[str, Any]]
@@ -114,6 +115,8 @@ def _ffprobe_video(video_path: Path) -> dict[str, Any]:
         capture_output=True,
         check=False,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     if completed.returncode != 0:
         return {
@@ -634,6 +637,7 @@ def _visual_checks(rendered: dict[str, Any]) -> list[dict[str, Any]]:
     checks: list[dict[str, Any]] = []
     previous_asset_id: str | None = None
     seen_asset_indices: dict[str, int] = {}
+    seen_source_indices: dict[str, tuple[int, str | None]] = {}
     for index, visual in enumerate(rendered.get("visuals", [])):
         width = _int_or_none(visual.get("original_width"))
         height = _int_or_none(visual.get("original_height"))
@@ -681,6 +685,36 @@ def _visual_checks(rendered: dict[str, Any]) -> list[dict[str, Any]]:
                     )
                 )
             seen_asset_indices.setdefault(asset_key, index)
+        source_key = _visual_source_key(visual)
+        if source_key:
+            first_source_index, first_asset_id = seen_source_indices.get(
+                source_key, (None, None)
+            )
+            current_asset_id = str(asset_id) if asset_id else None
+            if first_source_index is not None and not (
+                current_asset_id is not None
+                and first_asset_id is not None
+                and first_asset_id == current_asset_id
+            ):
+                checks.append(
+                    _check(
+                        "SAME_SOURCE_REUSED",
+                        "warning",
+                        f"visuals[{index}]",
+                        "The same underlying visual source is reused within this render.",
+                        "Use more varied visual queries, fetch more Pexels candidates, or fall back to local stock before rerendering.",
+                        metrics={
+                            "source_key": source_key,
+                            "first_index": first_source_index,
+                            "current_index": index,
+                            "first_asset_id": first_asset_id,
+                            "current_asset_id": current_asset_id,
+                        },
+                        auto_fixable=True,
+                        codex_hint="Increase fetched Pexels candidates and exclude repeated source keys when selecting visuals.",
+                    )
+                )
+            seen_source_indices.setdefault(source_key, (index, current_asset_id))
         if asset_id and previous_asset_id == asset_id:
             checks.append(
                 _check(
@@ -953,3 +987,29 @@ def _parse_frame_rate(value: Any) -> float | None:
         return float(Fraction(str(value)))
     except (ValueError, ZeroDivisionError):
         return _float_or_none(value)
+
+
+def _visual_source_key(visual: dict[str, Any]) -> str | None:
+    source = str(visual.get("source") or "").strip().lower()
+    pexels_id = str(visual.get("pexels_id") or "").strip()
+    if source == "pexels" and pexels_id:
+        return f"pexels:{pexels_id}"
+
+    original_video_url = str(visual.get("original_video_url") or "").strip()
+    if source == "pexels" and original_video_url:
+        return f"pexels-url:{original_video_url}"
+
+    local_path_text = str(visual.get("local_file_path") or "").strip()
+    if not local_path_text:
+        return None
+
+    path = _resolve_path(local_path_text)
+    if path.is_file():
+        try:
+            return sha256_file(path)
+        except OSError:
+            pass
+    try:
+        return f"path:{path.resolve()}"
+    except OSError:
+        return f"path:{path.as_posix()}"

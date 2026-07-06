@@ -38,7 +38,7 @@ from src.db.repositories import (
     upsert_project,
 )
 from src.errors import AppError
-from src.media.library import MediaAsset
+from src.media.library import MediaAsset, media_asset_source_key
 from src.media.selector import select_media_asset
 from src.utils.file_hash import sha256_file
 from src.validators.json_validator import load_json, validate_json
@@ -77,6 +77,7 @@ def render_project(
     video_renderer: VideoRenderer | None = None,
     render_dir: Path | None = None,
     rejected_asset_ids: set[str] | None = None,
+    rejected_source_keys: set[str] | None = None,
 ) -> Path:
     init_db()
     project_path = project_path.resolve()
@@ -118,7 +119,12 @@ def render_project(
     )
     selected_bgm = _select_render_bgm(project["bgm"])
     bgm_render = _build_bgm_render(project["bgm"], selected_bgm, actual_duration)
-    visuals = _select_render_visuals(project, visuals, rejected_asset_ids or set())
+    visuals = _select_render_visuals(
+        project,
+        visuals,
+        rejected_asset_ids or set(),
+        rejected_source_keys or set(),
+    )
 
     now = render_time.astimezone(timezone.utc)
     render_id = f"render_{now.strftime('%Y%m%d_%H%M%S')}"
@@ -523,6 +529,7 @@ def _select_render_visuals(
     project: dict[str, Any],
     visuals: list[dict[str, Any]],
     rejected_asset_ids: set[str] | None = None,
+    rejected_source_keys: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     with connect() as connection:
         assets = list_active_media_assets(connection)
@@ -531,18 +538,21 @@ def _select_render_visuals(
 
     selected_visuals: list[dict[str, Any]] = []
     used_asset_ids: set[str] = set(rejected_asset_ids or set())
+    used_source_keys: set[str] = set(rejected_source_keys or set())
     for visual in visuals:
         asset = _select_unused_media_asset(
             visual,
             project["visual_strategy"],
             assets,
             used_asset_ids,
+            used_source_keys,
         )
         if asset is None:
             asset = _select_fallback_media_asset(
                 project["visual_strategy"],
                 assets,
                 used_asset_ids,
+                used_source_keys,
             )
         selected_visual = (
             _build_visual_from_asset(visual, asset) if asset is not None else visual
@@ -550,6 +560,8 @@ def _select_render_visuals(
         selected_visuals.append(selected_visual)
         if selected_asset_id := selected_visual.get("asset_id"):
             used_asset_ids.add(str(selected_asset_id))
+        if asset is not None:
+            used_source_keys.add(media_asset_source_key(asset))
     return selected_visuals
 
 
@@ -558,23 +570,31 @@ def _select_unused_media_asset(
     visual_strategy: dict[str, Any],
     assets: list[MediaAsset],
     used_asset_ids: set[str],
+    used_source_keys: set[str],
 ) -> MediaAsset | None:
     script_item = {"visual_query": visual["visual_query"]}
     candidates = [asset for asset in assets if asset.asset_id not in used_asset_ids]
     if not candidates:
         return None
-    return select_media_asset(script_item, visual_strategy, candidates)
+    return select_media_asset(
+        script_item,
+        visual_strategy,
+        candidates,
+        used_source_keys=used_source_keys,
+    )
 
 
 def _select_fallback_media_asset(
     visual_strategy: dict[str, Any],
     assets: list[MediaAsset],
     used_asset_ids: set[str],
+    used_source_keys: set[str],
 ) -> MediaAsset | None:
     candidates = [
         asset
         for asset in _allowed_media_assets(visual_strategy, assets)
         if asset.asset_id not in used_asset_ids
+        and media_asset_source_key(asset) not in used_source_keys
     ]
     if not candidates:
         return None

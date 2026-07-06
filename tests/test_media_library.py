@@ -6,7 +6,7 @@ from pathlib import Path
 
 from src.db.database import init_db
 from src.db.repositories import list_active_media_assets, upsert_media_assets
-from src.media.library import MediaAsset, load_media_manifest
+from src.media.library import MediaAsset, load_media_manifest, media_asset_source_key
 from src.media.selector import select_media_asset
 
 
@@ -116,6 +116,50 @@ def test_select_media_asset_returns_none_when_no_asset_matches(tmp_path: Path) -
                 is_active=True,
             )
         ],
+    )
+
+    assert selected is None
+
+
+def test_select_media_asset_skips_used_source_key_even_if_asset_ids_differ(
+    tmp_path: Path,
+) -> None:
+    shared_path = tmp_path / "shared.mp4"
+    shared_path.write_bytes(b"fake mp4")
+    first = MediaAsset(
+        asset_id="shared_a",
+        source="local",
+        local_file_path=shared_path,
+        original_width=1080,
+        original_height=1920,
+        original_duration_sec=10,
+        orientation="portrait",
+        selected_quality="hd",
+        query="ocean",
+        tags=["ocean"],
+        used_count=0,
+        is_active=True,
+    )
+    second = MediaAsset(
+        asset_id="shared_b",
+        source="local",
+        local_file_path=shared_path,
+        original_width=1080,
+        original_height=1920,
+        original_duration_sec=10,
+        orientation="portrait",
+        selected_quality="hd",
+        query="ocean",
+        tags=["ocean"],
+        used_count=0,
+        is_active=True,
+    )
+
+    selected = select_media_asset(
+        {"visual_query": "ocean"},
+        {"source_priority": ["local"], "avoid_keywords": []},
+        [first, second],
+        used_source_keys={media_asset_source_key(first)},
     )
 
     assert selected is None

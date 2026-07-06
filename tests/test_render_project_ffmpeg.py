@@ -451,7 +451,7 @@ def test_render_project_avoids_reusing_same_media_asset_in_one_render(
     first_path = tmp_path / "ocean_a.mp4"
     second_path = tmp_path / "ocean_b.mp4"
     first_path.write_bytes(b"fake mp4")
-    second_path.write_bytes(b"fake mp4")
+    second_path.write_bytes(b"fake mp4 b")
     first_asset = MediaAsset(
         asset_id="ocean_a",
         source="local",
@@ -498,6 +498,65 @@ def test_render_project_avoids_reusing_same_media_asset_in_one_render(
     rendered = json.loads(rendered_path.read_text(encoding="utf-8"))
     asset_ids = [visual.get("asset_id") for visual in rendered["visuals"]]
     assert asset_ids == ["ocean_a", "ocean_b", None]
+
+
+def test_render_project_avoids_reusing_same_visual_source_with_different_asset_ids(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project = _project()
+    project["script"][0]["visual_query"] = "ocean"
+    project["script"][1]["visual_query"] = "ocean"
+    project["script"][2]["visual_query"] = "ocean"
+    project_path = tmp_path / "project.youtube.json"
+    project_path.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+    shared_path = tmp_path / "shared_ocean.mp4"
+    shared_path.write_bytes(b"fake mp4")
+    first_asset = MediaAsset(
+        asset_id="ocean_a",
+        source="local",
+        local_file_path=shared_path,
+        original_width=1080,
+        original_height=1920,
+        original_duration_sec=8.0,
+        orientation="portrait",
+        selected_quality="hd",
+        query="ocean",
+        tags=["ocean"],
+        used_count=0,
+        is_active=True,
+    )
+    second_asset = MediaAsset(
+        asset_id="ocean_b",
+        source="local",
+        local_file_path=shared_path,
+        original_width=1080,
+        original_height=1920,
+        original_duration_sec=8.0,
+        orientation="portrait",
+        selected_quality="hd",
+        query="ocean",
+        tags=["ocean"],
+        used_count=0,
+        is_active=True,
+    )
+    monkeypatch.setattr(render_module, "RENDERS_DIR", tmp_path / "renders")
+    monkeypatch.setattr(render_module, "init_db", lambda: None)
+    monkeypatch.setattr(render_module, "connect", lambda: NullConnection())
+    monkeypatch.setattr(render_module, "list_active_bgm_tracks", lambda connection: [])
+    monkeypatch.setattr(
+        render_module,
+        "list_active_media_assets",
+        lambda connection: [first_asset, second_asset],
+    )
+    monkeypatch.setattr(render_module, "upsert_project", lambda *args: None)
+    monkeypatch.setattr(render_module, "insert_render_summary", lambda *args: None)
+    renderer = FakeVideoRenderer()
+
+    rendered_path = render_project(project_path, video_renderer=renderer)
+
+    rendered = json.loads(rendered_path.read_text(encoding="utf-8"))
+    asset_ids = [visual.get("asset_id") for visual in rendered["visuals"]]
+    assert asset_ids == ["ocean_a", None, None]
 
 
 def test_render_project_does_not_reuse_available_media_when_query_has_no_match(

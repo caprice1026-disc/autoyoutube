@@ -24,6 +24,7 @@ from src.quality.inspector import inspect_render
 from src.render.ffmpeg_renderer import FfmpegVideoRenderer
 from src.repair.failure_classifier import classify_exception
 from src.repair.quality_repair import decide_repair
+from src.utils.file_hash import sha256_file
 from src.validators.json_validator import load_json, validate_json
 from src.voice.aivis_client import AivisSpeechClient
 
@@ -101,9 +102,11 @@ def make_video(options: MakeVideoOptions) -> MakeVideoResult:
     current_project = _project_with_bgm_override(project, options.bgm_id)
     current_project = _project_with_visual_keywords(current_project, options)
     rejected_asset_ids: set[str] = set()
+    rejected_source_keys: set[str] = set()
     per_query = options.per_query or _config_int(
         config, "visuals", "default_per_query", 3
     )
+    max_downloads = options.max_downloads
     exit_code = 1
     status = "failed"
 
@@ -126,7 +129,7 @@ def make_video(options: MakeVideoOptions) -> MakeVideoResult:
                     visual_plan = _fetch_visuals(
                         attempt_project_path,
                         per_query=per_query,
-                        max_downloads=options.max_downloads,
+                        max_downloads=max_downloads,
                         orientation=options.orientation,
                         size=options.size,
                     )
@@ -161,6 +164,7 @@ def make_video(options: MakeVideoOptions) -> MakeVideoResult:
                 attempt_project_path,
                 attempt_dir,
                 rejected_asset_ids,
+                rejected_source_keys,
             )
             if not options.skip_inspect and not options.dry_run:
                 _log(f"attempt {attempt}: inspecting render")
@@ -183,6 +187,13 @@ def make_video(options: MakeVideoOptions) -> MakeVideoResult:
                 attempt_entry["fixes"].append(duration_fix["log"])
                 current_project = duration_fix["project"]
             rejected_asset_ids.update(decision.rejected_asset_ids)
+            rejected_source_keys.update(decision.rejected_source_keys)
+            if decision.rejected_asset_ids or decision.rejected_source_keys:
+                _log(
+                    f"attempt {attempt}: rejected "
+                    f"{len(decision.rejected_asset_ids)} asset id(s) and "
+                    f"{len(decision.rejected_source_keys)} source key(s)"
+                )
             repair_log["attempts"].append(attempt_entry)
 
             if duration_fix:
@@ -225,8 +236,22 @@ def make_video(options: MakeVideoOptions) -> MakeVideoResult:
                 _log("auto-fix limit reached")
                 break
 
-            per_query += 1
-            _log(f"attempt {attempt}: retrying with per_query={per_query}")
+            per_query, max_downloads = _next_fetch_budget(
+                per_query,
+                max_downloads,
+                decision.blocking_checks,
+                current_project,
+                options,
+            )
+            _log(
+                "attempt "
+                f"{attempt}: retrying with per_query={per_query}"
+                + (
+                    f", max_downloads={max_downloads}"
+                    if max_downloads is not None
+                    else ""
+                )
+            )
         except Exception as exc:
             failure = classify_exception(exc)
             failure["attempt"] = attempt
@@ -249,6 +274,7 @@ def make_video(options: MakeVideoOptions) -> MakeVideoResult:
         seed=seed,
         query_mode=options.query_mode,
         rejected_asset_ids=rejected_asset_ids,
+        rejected_source_keys=rejected_source_keys,
     )
     _write_json(run_dir / "repair_log.json", repair_log)
     _write_json(run_dir / "failure_log.json", failure_log)
@@ -405,6 +431,7 @@ def _render_attempt(
     project_path: Path,
     attempt_dir: Path,
     rejected_asset_ids: set[str],
+    rejected_source_keys: set[str],
 ) -> Path:
     voice_service = None
     video_renderer = None
@@ -418,6 +445,7 @@ def _render_attempt(
         video_renderer=video_renderer,
         render_dir=attempt_dir,
         rejected_asset_ids=rejected_asset_ids,
+        rejected_source_keys=rejected_source_keys,
     )
 
 
@@ -578,16 +606,19 @@ def _write_visual_assignment(
     seed: int,
     query_mode: str,
     rejected_asset_ids: set[str],
+    rejected_source_keys: set[str],
 ) -> None:
     assignments: list[dict[str, Any]] = []
     if rendered_path.is_file():
         rendered = load_json(rendered_path)
         for visual in rendered.get("visuals", []):
+            visual_source_key = _visual_source_key(visual)
             assignments.append(
                 {
                     "script_index": visual.get("script_index") or visual.get("index"),
                     "visual_query": visual.get("visual_query"),
                     "asset_id": visual.get("asset_id"),
+                    "source_key": visual_source_key,
                     "source": visual.get("source"),
                     "selection_source": "fresh_pexels"
                     if visual.get("source") == "pexels"
@@ -595,7 +626,8 @@ def _write_visual_assignment(
                     "score": None,
                     "reason": "selected by render media selector",
                     "fallback_used": not bool(visual.get("asset_id")),
-                    "rejected": visual.get("asset_id") in rejected_asset_ids,
+                    "rejected": visual.get("asset_id") in rejected_asset_ids
+                    or visual_source_key in rejected_source_keys,
                 }
             )
     _write_json(
@@ -640,6 +672,59 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+
+
+def _next_fetch_budget(
+    per_query: int,
+    max_downloads: int | None,
+    checks: list[dict[str, Any]],
+    project: dict[str, Any],
+    options: MakeVideoOptions,
+) -> tuple[int, int | None]:
+    source_related_codes = {
+        "SAME_ASSET_REUSED",
+        "SAME_SOURCE_REUSED",
+        "SOURCE_RESOLUTION_TOO_LOW",
+        "QUERY_CANDIDATE_TOO_FEW",
+        "PEXELS_FETCH_FAILED",
+        "PEXELS_RATE_LIMIT",
+        "VISUAL_FILE_MISSING",
+        "MEDIA_FILE_MISSING",
+    }
+    codes = {str(check.get("code") or "") for check in checks}
+    if codes & source_related_codes:
+        per_query = min(per_query + 2, 8)
+        if max_downloads is not None:
+            query_count = max(1, len(_queries_for_plan(project, options)))
+            max_downloads = max(max_downloads + query_count, per_query * query_count)
+        return per_query, max_downloads
+
+    if any(bool(check.get("auto_fixable")) for check in checks):
+        # Fallback for other visual retries that do not map to a source problem.
+        per_query = min(per_query + 1, 8)
+    return per_query, max_downloads
+
+
+def _visual_source_key(visual: dict[str, Any]) -> str | None:
+    source = str(visual.get("source") or "").strip().lower()
+    pexels_id = str(visual.get("pexels_id") or "").strip()
+    if source == "pexels" and pexels_id:
+        return f"pexels:{pexels_id}"
+
+    original_video_url = str(visual.get("original_video_url") or "").strip()
+    if source == "pexels" and original_video_url:
+        return f"pexels-url:{original_video_url}"
+
+    local_path_text = str(visual.get("local_file_path") or "").strip()
+    if local_path_text:
+        path = Path(local_path_text)
+        if path.is_file():
+            try:
+                return sha256_file(path)
+            except OSError:
+                pass
+        return f"path:{local_path_text}"
+    return None
 
 
 def _log(message: str) -> None:

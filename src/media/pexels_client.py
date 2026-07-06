@@ -9,7 +9,7 @@ from urllib import error, parse, request
 
 from src.env import load_dotenv
 from src.errors import AppError
-from src.media.library import MediaAsset
+from src.media.library import MediaAsset, media_asset_source_key
 
 
 class PexelsTransport(Protocol):
@@ -138,7 +138,7 @@ class PexelsClient:
         size: str | None = "small",
     ) -> list[MediaAsset]:
         assets: list[MediaAsset] = []
-        seen_asset_ids: set[str] = set()
+        seen_source_keys: set[str] = set()
         for query in _unique_non_empty(queries):
             for video in self.search_videos(
                 query,
@@ -147,9 +147,10 @@ class PexelsClient:
                 size=size,
             ):
                 asset = self._asset_from_video(video, query, output_dir, orientation)
-                if asset.asset_id in seen_asset_ids:
+                source_key = media_asset_source_key(asset)
+                if source_key in seen_source_keys:
                     continue
-                seen_asset_ids.add(asset.asset_id)
+                seen_source_keys.add(source_key)
                 if not asset.local_file_path.is_file():
                     self.transport.download(
                         asset.original_video_url or "", asset.local_file_path

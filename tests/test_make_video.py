@@ -243,8 +243,8 @@ def test_make_video_retries_visual_quality_issue_with_rejected_asset(
     tmp_path: Path, monkeypatch
 ) -> None:
     project_path = _write_project(tmp_path)
-    fetch_per_query: list[int] = []
-    render_rejections: list[set[str]] = []
+    fetch_calls: list[tuple[int, int | None]] = []
+    render_rejections: list[tuple[set[str], set[str]]] = []
     report_calls = 0
     monkeypatch.setattr(make_video_module, "RENDERS_DIR", tmp_path / "renders")
     monkeypatch.setattr(make_video_module, "init_db", lambda: None)
@@ -257,15 +257,18 @@ def test_make_video_retries_visual_quality_issue_with_rejected_asset(
         orientation: str,
         size: str,
     ) -> None:
-        fetch_per_query.append(per_query)
+        fetch_calls.append((per_query, max_downloads))
 
     def fake_render_attempt(
         options: MakeVideoOptions,
         project_path: Path,
         attempt_dir: Path,
         rejected_asset_ids: set[str],
+        rejected_source_keys: set[str],
     ) -> Path:
-        render_rejections.append(set(rejected_asset_ids))
+        render_rejections.append(
+            (set(rejected_asset_ids), set(rejected_source_keys))
+        )
         attempt_dir.mkdir(parents=True, exist_ok=True)
         rendered_path = attempt_dir / "rendered.youtube.json"
         rendered_path.write_text(json.dumps({"visuals": []}), encoding="utf-8")
@@ -279,12 +282,18 @@ def test_make_video_retries_visual_quality_issue_with_rejected_asset(
                 "summary": {"status": "warning", "error_count": 0, "warning_count": 1},
                 "checks": [
                     {
-                        "code": "SAME_ASSET_REUSED",
+                        "code": "SAME_SOURCE_REUSED",
                         "level": "warning",
                         "auto_fixable": True,
                         "target": "visuals[2]",
-                        "message": "same asset",
-                        "metrics": {"asset_id": "pexels_bad"},
+                        "message": "same source",
+                        "metrics": {
+                            "source_key": "pexels:12345",
+                            "first_index": 0,
+                            "current_index": 2,
+                            "first_asset_id": "pexels_bad_a",
+                            "current_asset_id": "pexels_bad_b",
+                        },
                     }
                 ],
             }
@@ -304,21 +313,26 @@ def test_make_video_retries_visual_quality_issue_with_rejected_asset(
             voice_mode="dry-run",
             video_mode="dry-run",
             per_query=3,
+            max_downloads=18,
             max_fix_attempts=2,
             skip_inspect=True,
         )
     )
 
     assert result.exit_code == 0
-    assert fetch_per_query == [3, 4]
-    assert render_rejections == [set(), {"pexels_bad"}]
+    assert fetch_calls == [(3, 18), (5, 25)]
+    assert render_rejections == [
+        (set(), set()),
+        (set(), {"pexels:12345"}),
+    ]
     repair_log = json.loads((result.run_dir / "repair_log.json").read_text("utf-8"))
     assert repair_log["final_attempt"] == 2
     assert repair_log["attempts"][0]["fixes"] == [
         {
             "action": "reject_asset_and_reselect",
-            "asset_id": "pexels_bad",
-            "reason": "SAME_ASSET_REUSED",
+            "asset_id": None,
+            "source_key": "pexels:12345",
+            "reason": "SAME_SOURCE_REUSED",
             "before": "visuals[2]",
             "after": "retry_attempt",
         }
@@ -351,6 +365,7 @@ def test_make_video_can_retry_duration_warning_when_config_allows_voice_adjustme
         project_path: Path,
         attempt_dir: Path,
         rejected_asset_ids: set[str],
+        rejected_source_keys: set[str],
     ) -> Path:
         project = json.loads(project_path.read_text(encoding="utf-8"))
         rendered_voice_settings.append(project["voice"])
@@ -435,6 +450,7 @@ def test_make_video_uses_cli_visual_keywords_for_actual_pexels_query_project(
         project_path: Path,
         attempt_dir: Path,
         rejected_asset_ids: set[str],
+        rejected_source_keys: set[str],
     ) -> Path:
         render_projects.append(json.loads(project_path.read_text(encoding="utf-8")))
         attempt_dir.mkdir(parents=True, exist_ok=True)

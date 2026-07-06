@@ -703,6 +703,70 @@ def test_evaluate_render_reports_reused_visual_asset_within_render(
     }
 
 
+def test_evaluate_render_reports_reused_visual_source_within_render(
+    tmp_path: Path,
+) -> None:
+    from src.quality.evaluator import evaluate_render
+
+    render_dir = tmp_path / "render"
+    (render_dir / "logs").mkdir(parents=True)
+    (render_dir / "output.mp4").write_bytes(b"fake mp4")
+    (render_dir / "bgm.mp3").write_bytes(b"fake bgm")
+    (render_dir / "video_a.mp4").write_bytes(b"fake video a")
+    (render_dir / "video_b.mp4").write_bytes(b"fake video b")
+    (render_dir / "subtitle.ass").write_text("subtitle", encoding="utf-8")
+    (render_dir / "description.txt").write_text("description", encoding="utf-8")
+    (render_dir / "credits.txt").write_text("credits", encoding="utf-8")
+    (render_dir / "logs" / "ffmpeg_command.txt").write_text("ffmpeg", encoding="utf-8")
+    (render_dir / "logs" / "ffmpeg_stderr.log").write_text("", encoding="utf-8")
+    _write_constant_wav(render_dir / "audio" / "final_audio.wav")
+    rendered = _rendered(render_dir)
+    rendered["credits"]["items"] = [
+        {"credit_type": "bgm", "source": "youtube_audio_library", "text": "BGM"},
+        {"credit_type": "video", "source": "pexels", "text": "Video"},
+    ]
+    rendered["subtitles"]["items"][0]["text"] = "short"
+    first_visual = {
+        **rendered["visuals"][0],
+        "index": 1,
+        "asset_id": "pexels_ocean_a",
+        "local_file_path": str(render_dir / "video_a.mp4"),
+    }
+    second_visual = {
+        **rendered["visuals"][0],
+        "index": 2,
+        "script_index": 2,
+        "asset_id": "pexels_ocean_b",
+        "local_file_path": str(render_dir / "video_b.mp4"),
+    }
+    third_visual = {
+        **rendered["visuals"][0],
+        "index": 3,
+        "script_index": 3,
+        "asset_id": "pexels_ocean_c",
+        "local_file_path": str(render_dir / "video_a.mp4"),
+    }
+    rendered["visuals"] = [first_visual, second_visual, third_visual]
+    rendered_path = render_dir / "rendered.youtube.json"
+    rendered_path.write_text(json.dumps(rendered, ensure_ascii=False), encoding="utf-8")
+
+    report = evaluate_render(
+        rendered_path,
+        video_probe=lambda _path: {
+            "duration_sec": 3.0,
+            "width": 1080,
+            "height": 1920,
+            "fps": 30.0,
+        },
+    )
+
+    checks = {check["code"]: check for check in report["checks"]}
+    assert "SAME_SOURCE_REUSED" in checks
+    assert checks["SAME_SOURCE_REUSED"]["metrics"]["source_key"] == "pexels:12345"
+    assert checks["SAME_SOURCE_REUSED"]["metrics"]["first_asset_id"] == "pexels_ocean_a"
+    assert checks["SAME_SOURCE_REUSED"]["metrics"]["current_asset_id"] == "pexels_ocean_c"
+
+
 def test_evaluate_render_cli_prints_report_path(
     monkeypatch, capsys, tmp_path: Path
 ) -> None:

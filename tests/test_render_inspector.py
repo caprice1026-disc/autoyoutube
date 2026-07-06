@@ -55,7 +55,7 @@ def test_inspect_render_extracts_summary_subtitle_and_timeline_frames(
     ffmpeg_path = render_dir / "ffmpeg.exe"
     ffmpeg_path.write_text("fake ffmpeg", encoding="utf-8")
 
-    def fake_run(cmd, *, capture_output, check, text):
+    def fake_run(cmd, *, capture_output, check, text, **kwargs):
         Path(cmd[-1]).write_bytes(b"fake png")
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 

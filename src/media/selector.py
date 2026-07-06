@@ -2,25 +2,29 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
-from src.media.library import MediaAsset
+from src.media.library import MediaAsset, media_asset_source_key
 
 
 def select_media_asset(
     script_item: dict[str, Any],
     visual_strategy: dict[str, Any],
     assets: Sequence[MediaAsset],
+    *,
+    used_source_keys: set[str] | None = None,
 ) -> MediaAsset | None:
     source_priority = list(visual_strategy.get("source_priority") or [])
     avoid_keywords = {
         str(keyword).lower() for keyword in visual_strategy.get("avoid_keywords") or []
     }
     visual_query = str(script_item.get("visual_query") or "").lower()
+    rejected_source_keys = used_source_keys or set()
 
     matches = [
         asset
         for asset in assets
         if asset.is_active
         and asset.source in source_priority
+        and media_asset_source_key(asset) not in rejected_source_keys
         and _matches_query(visual_query, asset)
         and not _has_avoid_keyword(asset, avoid_keywords)
     ]
