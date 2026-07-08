@@ -1,42 +1,5 @@
 {
-  "schema_version": "youtube-1.0.0",
-  "platform_profile": "youtube_shorts",
-  "id": "trivia_volcano_sudden_eruption_001",
-  "topic": "火山はなぜ突然噴火するように見えるのか",
-  "title": "火山はなぜ突然噴火するように見えるのか",
-  "hook": "突然に見える火山噴火の裏で、地下では長い準備が進んでいます。",
-  "target": {
-    "duration_sec": 60,
-    "aspect_ratio": "9:16",
-    "resolution": {
-      "width": 1080,
-      "height": 1920
-    },
-    "fps": 30,
-    "video_format": {
-      "container": "mp4",
-      "video_codec": "libx264",
-      "audio_codec": "aac",
-      "pix_fmt": "yuv420p"
-    }
-  },
-  "voice": {
-    "engine": "aivis_speech",
-    "speaker": "まお",
-    "style_id": 888753760,
-    "speed_scale": 1.18,
-    "pitch_scale": 0.0,
-    "intonation_scale": 1.0,
-    "sentence_gap_ms": 180
-  },
   "bgm": {
-    "enabled": true,
-    "strategy": "youtube_safe_bgm",
-    "mood": "mysterious",
-    "intensity": "low",
-    "volume_db": -26,
-    "fade_in_ms": 500,
-    "fade_out_ms": 1200,
     "allow_sources": [
       "youtube_audio_library"
     ],
@@ -44,158 +7,176 @@
       "vocal",
       "too_loud",
       "copyright_risky"
-    ]
-  },
-  "visual_strategy": {
-    "source_priority": [
-      "pexels",
-      "local"
     ],
-    "preferred_orientation": "portrait",
+    "enabled": true,
+    "fade_in_ms": 500,
+    "fade_out_ms": 1200,
+    "intensity": "low",
+    "mood": "mysterious",
+    "strategy": "youtube_safe_bgm",
+    "volume_db": -26
+  },
+  "fact_check_notes": "マグマの上昇、ガス圧、噴火予測サインの表現が一般向けに妥当か確認する。",
+  "hook": "突然に見える火山噴火の裏で、地下では長い準備が進んでいます。",
+  "id": "trivia_volcano_sudden_eruption_001",
+  "manual_fact_check_required": true,
+  "platform_profile": "youtube_shorts",
+  "production_notes": "3本品質チェック用の火山テーマ台本。",
+  "schema_version": "youtube-1.0.0",
+  "script": [
+    {
+      "caption_style_hint": "normal",
+      "estimated_duration_sec": 3.5,
+      "index": 1,
+      "text": "火山の噴火は、突然起きたように見えます。",
+      "visual_query": "volcano smoke"
+    },
+    {
+      "caption_style_hint": "normal",
+      "estimated_duration_sec": 4.2,
+      "index": 2,
+      "text": "でも、地面の下ではずっと前から準備が進んでいます。",
+      "visual_query": "earth underground magma"
+    },
+    {
+      "caption_style_hint": "emphasis",
+      "estimated_duration_sec": 4.5,
+      "index": 3,
+      "text": "地球の内部には、高温で溶けた岩石、マグマがあります。",
+      "visual_query": "lava close up"
+    },
+    {
+      "caption_style_hint": "normal",
+      "estimated_duration_sec": 3.8,
+      "index": 4,
+      "text": "マグマは軽いため、少しずつ上へ移動します。",
+      "visual_query": "lava flow"
+    },
+    {
+      "caption_style_hint": "normal",
+      "estimated_duration_sec": 4.0,
+      "index": 5,
+      "text": "その途中で、地下のすき間にたまることがあります。",
+      "visual_query": "cave rocks underground"
+    },
+    {
+      "caption_style_hint": "normal",
+      "estimated_duration_sec": 4.0,
+      "index": 6,
+      "text": "ここで問題になるのが、マグマに含まれるガスです。",
+      "visual_query": "volcanic gas steam"
+    },
+    {
+      "caption_style_hint": "emphasis",
+      "estimated_duration_sec": 4.8,
+      "index": 7,
+      "text": "炭酸飲料のふたを開けると、泡が一気に出ることがあります。",
+      "visual_query": "soda bubbles close up"
+    },
+    {
+      "caption_style_hint": "normal",
+      "estimated_duration_sec": 3.5,
+      "index": 8,
+      "text": "火山の中でも、似たようなことが起こります。",
+      "visual_query": "volcano crater smoke"
+    },
+    {
+      "caption_style_hint": "normal",
+      "estimated_duration_sec": 4.2,
+      "index": 9,
+      "text": "圧力が高まると、マグマとガスは出口を探します。",
+      "visual_query": "dark volcano crater"
+    },
+    {
+      "caption_style_hint": "emphasis",
+      "estimated_duration_sec": 4.5,
+      "index": 10,
+      "text": "そして岩のふたを押し破った瞬間、噴火が起きます。",
+      "visual_query": "volcano eruption"
+    },
+    {
+      "caption_style_hint": "normal",
+      "estimated_duration_sec": 5.5,
+      "index": 11,
+      "text": "人間には突然に見えても、火山にとっては長い時間をかけた結果です。",
+      "visual_query": "mountain volcano landscape"
+    },
+    {
+      "caption_style_hint": "normal",
+      "estimated_duration_sec": 4.0,
+      "index": 12,
+      "text": "小さな地震、地面のふくらみ、ガスの変化。",
+      "visual_query": "seismic graph"
+    },
+    {
+      "caption_style_hint": "normal",
+      "estimated_duration_sec": 5.0,
+      "index": 13,
+      "text": "こうしたサインを調べることで、噴火の予測に近づこうとしています。",
+      "visual_query": "scientist monitoring volcano"
+    },
+    {
+      "caption_style_hint": "question",
+      "estimated_duration_sec": 2.8,
+      "index": 14,
+      "text": "火山はただの山ではありません。",
+      "visual_query": "volcano mountain"
+    },
+    {
+      "caption_style_hint": "punchline",
+      "estimated_duration_sec": 5.0,
+      "index": 15,
+      "text": "地球の内部が、地表に向かって息を吐く場所なのです。",
+      "visual_query": "lava glowing night"
+    }
+  ],
+  "target": {
+    "aspect_ratio": "9:16",
+    "duration_sec": 60,
+    "fps": 30,
+    "resolution": {
+      "height": 1920,
+      "width": 1080
+    },
+    "video_format": {
+      "audio_codec": "aac",
+      "container": "mp4",
+      "pix_fmt": "yuv420p",
+      "video_codec": "libx264"
+    }
+  },
+  "title": "火山はなぜ突然噴火するように見えるのか",
+  "topic": "火山はなぜ突然噴火するように見えるのか",
+  "visual_strategy": {
+    "avoid_keywords": [
+      "cartoon",
+      "illustration",
+      "toy"
+    ],
     "fallback": "crop_landscape_to_9_16",
-    "primary_query": "volcano smoke",
     "fallback_queries": [
       "lava close up",
       "volcano eruption",
       "volcano crater smoke",
       "lava glowing night"
     ],
-    "avoid_keywords": [
-      "cartoon",
-      "illustration",
-      "toy"
+    "preferred_orientation": "portrait",
+    "primary_query": "volcano smoke",
+    "source_priority": [
+      "pexels",
+      "local"
     ]
   },
-  "script": [
-    {
-      "index": 1,
-      "text": "火山の噴火は、突然起きたように見えます。",
-      "visual_query": "volcano smoke",
-      "estimated_duration_sec": 3.5,
-      "caption_style_hint": "normal"
-    },
-    {
-      "index": 2,
-      "text": "でも、地面の下ではずっと前から準備が進んでいます。",
-      "visual_query": "earth underground magma",
-      "estimated_duration_sec": 4.2,
-      "caption_style_hint": "normal"
-    },
-    {
-      "index": 3,
-      "text": "地球の内部には、高温で溶けた岩石、マグマがあります。",
-      "visual_query": "lava close up",
-      "estimated_duration_sec": 4.5,
-      "caption_style_hint": "emphasis"
-    },
-    {
-      "index": 4,
-      "text": "マグマは軽いため、少しずつ上へ移動します。",
-      "visual_query": "lava flow",
-      "estimated_duration_sec": 3.8,
-      "caption_style_hint": "normal"
-    },
-    {
-      "index": 5,
-      "text": "その途中で、地下のすき間にたまることがあります。",
-      "visual_query": "cave rocks underground",
-      "estimated_duration_sec": 4.0,
-      "caption_style_hint": "normal"
-    },
-    {
-      "index": 6,
-      "text": "ここで問題になるのが、マグマに含まれるガスです。",
-      "visual_query": "volcanic gas steam",
-      "estimated_duration_sec": 4.0,
-      "caption_style_hint": "normal"
-    },
-    {
-      "index": 7,
-      "text": "炭酸飲料のふたを開けると、泡が一気に出ることがあります。",
-      "visual_query": "soda bubbles close up",
-      "estimated_duration_sec": 4.8,
-      "caption_style_hint": "emphasis"
-    },
-    {
-      "index": 8,
-      "text": "火山の中でも、似たようなことが起こります。",
-      "visual_query": "volcano crater smoke",
-      "estimated_duration_sec": 3.5,
-      "caption_style_hint": "normal"
-    },
-    {
-      "index": 9,
-      "text": "圧力が高まると、マグマとガスは出口を探します。",
-      "visual_query": "dark volcano crater",
-      "estimated_duration_sec": 4.2,
-      "caption_style_hint": "normal"
-    },
-    {
-      "index": 10,
-      "text": "そして岩のふたを押し破った瞬間、噴火が起きます。",
-      "visual_query": "volcano eruption",
-      "estimated_duration_sec": 4.5,
-      "caption_style_hint": "emphasis"
-    },
-    {
-      "index": 11,
-      "text": "人間には突然に見えても、火山にとっては長い時間をかけた結果です。",
-      "visual_query": "mountain volcano landscape",
-      "estimated_duration_sec": 5.5,
-      "caption_style_hint": "normal"
-    },
-    {
-      "index": 12,
-      "text": "小さな地震、地面のふくらみ、ガスの変化。",
-      "visual_query": "seismic graph",
-      "estimated_duration_sec": 4.0,
-      "caption_style_hint": "normal"
-    },
-    {
-      "index": 13,
-      "text": "こうしたサインを調べることで、噴火の予測に近づこうとしています。",
-      "visual_query": "scientist monitoring volcano",
-      "estimated_duration_sec": 5.0,
-      "caption_style_hint": "normal"
-    },
-    {
-      "index": 14,
-      "text": "火山はただの山ではありません。",
-      "visual_query": "volcano mountain",
-      "estimated_duration_sec": 2.8,
-      "caption_style_hint": "question"
-    },
-    {
-      "index": 15,
-      "text": "地球の内部が、地表に向かって息を吐く場所なのです。",
-      "visual_query": "lava glowing night",
-      "estimated_duration_sec": 5.0,
-      "caption_style_hint": "punchline"
-    }
-  ],
+  "voice": {
+    "engine": "aivis_speech",
+    "intonation_scale": 1.0,
+    "pitch_scale": 0.0,
+    "sentence_gap_ms": 180,
+    "speaker": "まお",
+    "speed_scale": 1.18,
+    "style_id": 888753760
+  },
   "youtube": {
-    "title": "火山はなぜ突然噴火するように見えるのか #Shorts",
-    "description": "火山噴火が突然に見える理由を、マグマとガスの圧力から短く紹介します。",
-    "hashtags": [
-      "#雑学",
-      "#火山",
-      "#Shorts"
-    ],
-    "tags": [
-      "雑学",
-      "火山",
-      "噴火",
-      "マグマ"
-    ],
-    "category_hint": "education",
-    "privacy_status": "private",
-    "made_for_kids": false,
-    "contains_synthetic_voice": true,
-    "description_sections": {
-      "summary": "突然に見える火山噴火の裏側を、マグマとガスの圧力で説明します。",
-      "credits_policy": "include_pexels_and_bgm_credits",
-      "disclaimer": "投稿前に火山学の説明と安全表現を確認してください。"
-    },
     "analytics_hypothesis": {
       "experiment_group": "volcano_sudden_eruption_mysterious_low",
       "hypothesis": "炭酸飲料のたとえを挟むことで、火山噴火の圧力説明が伝わりやすい。",
@@ -204,9 +185,28 @@
         "views",
         "likes"
       ]
-    }
-  },
-  "manual_fact_check_required": true,
-  "fact_check_notes": "マグマの上昇、ガス圧、噴火予測サインの表現が一般向けに妥当か確認する。",
-  "production_notes": "3本品質チェック用の火山テーマ台本。"
+    },
+    "category_hint": "education",
+    "contains_synthetic_voice": true,
+    "description": "火山噴火が突然に見える理由を、マグマとガスの圧力から短く紹介します。",
+    "description_sections": {
+      "credits_policy": "include_pexels_and_bgm_credits",
+      "disclaimer": "投稿前に火山学の説明と安全表現を確認してください。",
+      "summary": "突然に見える火山噴火の裏側を、マグマとガスの圧力で説明します。"
+    },
+    "hashtags": [
+      "#雑学",
+      "#火山",
+      "#Shorts"
+    ],
+    "made_for_kids": false,
+    "privacy_status": "private",
+    "tags": [
+      "雑学",
+      "火山",
+      "噴火",
+      "マグマ"
+    ],
+    "title": "火山はなぜ突然噴火するように見えるのか #Shorts"
+  }
 }

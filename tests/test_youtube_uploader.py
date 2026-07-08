@@ -46,6 +46,7 @@ def _write_render_files(tmp_path: Path) -> Path:
         json.dumps({"summary": {"error_count": 0}}), encoding="utf-8"
     )
     rendered = {
+        "render_id": "render-1",
         "project_id": "sample",
         "output": {
             "video_path": str(render_dir / "output.mp4"),
@@ -75,11 +76,12 @@ def _write_render_files(tmp_path: Path) -> Path:
 
 
 def test_upload_private_video_calls_youtube_insert_and_updates_rendered_json(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch
 ) -> None:
     rendered_path = _write_render_files(tmp_path)
     service = FakeYoutubeService()
     media_uploads: list[dict[str, Any]] = []
+    persisted_records: list[dict[str, Any]] = []
 
     def media_upload_factory(
         path: str, *, mimetype: str, resumable: bool
@@ -87,6 +89,14 @@ def test_upload_private_video_calls_youtube_insert_and_updates_rendered_json(
         media = {"path": path, "mimetype": mimetype, "resumable": resumable}
         media_uploads.append(media)
         return media
+
+    def persist_youtube_upload_record(record: dict[str, Any]) -> None:
+        persisted_records.append(record)
+
+    monkeypatch.setattr(
+        "src.youtube.uploader._persist_youtube_upload_record",
+        persist_youtube_upload_record,
+    )
 
     result = upload_private_video(
         rendered_path,
@@ -106,6 +116,17 @@ def test_upload_private_video_calls_youtube_insert_and_updates_rendered_json(
     assert media_uploads[0]["path"] == str(rendered_path.parent / "output.mp4")
     assert result.video_id == "abc123"
     assert result.watch_url == "https://www.youtube.com/watch?v=abc123"
+    assert persisted_records == [
+        {
+            "render_id": "render-1",
+            "planned": True,
+            "status": "uploaded_private",
+            "youtube_video_id": "abc123",
+            "youtube_url": result.watch_url,
+            "uploaded_at": persisted_records[0]["uploaded_at"],
+            "error_message": None,
+        }
+    ]
     updated = json.loads(rendered_path.read_text(encoding="utf-8"))
     assert updated["youtube"]["upload"]["status"] == "uploaded_private"
     assert updated["youtube"]["upload"]["youtube_video_id"] == "abc123"

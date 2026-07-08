@@ -354,3 +354,18 @@ $rendered.visuals | Where-Object asset_id | Group-Object asset_id | Where-Object
 ```
 
 現在のテストは、JSON検証、CLIエラー表示、AivisSpeechクライアント、音声結合、BGM登録/選定、ローカル映像素材登録/選定、Pexels APIクライアント、Docker Compose設定、FFmpegコマンド生成、複数映像素材タイムライン、レンダーパイプライン、DB保存、quality evaluator、YouTube upload metadata/uploaderを対象にしています。
+## 補足
+
+- `projects/` 配下の `project.youtube.json` は、SQLite DB の内容を正として再同期する前提です。
+- `commands/upload_commands.txt` は、現在の DB 状態に合わせた一時的なバッチ入力です。
+- `AivisSpeech/` はローカル実行用の生成物なので、Git 管理対象外です。
+
+### YouTube Analytics summary
+
+`youtube-analytics-summary` は、OAuth 済みの `data/youtube_token.json` を使って YouTube Analytics API を呼び出し、アップロード済み動画の `views`、`likes`、`comments`、`shares`、`averageViewDuration`、`averageViewPercentage` などを集計します。
+
+```powershell
+.\.venv\Scripts\python.exe -m src.main youtube-analytics-summary --days 28
+```
+
+出力は `data/youtube_analytics_summary.json` です。DB にはスナップショットも保存されます。

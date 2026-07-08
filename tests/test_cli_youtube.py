@@ -98,3 +98,76 @@ def test_upload_youtube_cli_accepts_render_directory(monkeypatch, capsys) -> Non
     assert exit_code == 0
     assert calls == [(Path("renders/sample/rendered.youtube.json"), "private")]
     assert "YouTube upload complete: abc123" in captured.out
+
+
+def test_youtube_analytics_summary_cli_calls_summary_generator(
+    monkeypatch, capsys
+) -> None:
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "tsm",
+            "youtube-analytics-summary",
+            "--days",
+            "14",
+            "--output-path",
+            "data/youtube_analytics_summary.json",
+        ],
+    )
+    monkeypatch.setattr(main_module, "load_dotenv", lambda: None)
+
+    def fake_generate_youtube_analytics_summary(**kwargs: object) -> dict[str, object]:
+        calls.append(dict(kwargs))
+        return {
+            "analyzed_video_count": 1,
+            "video_count": 1,
+            "start_date": "2026-07-01",
+            "end_date": "2026-07-14",
+            "totals": {"views": 123, "likes": 4, "comments": 2, "shares": 1},
+            "weighted_averages": {
+                "average_view_duration": 12.34,
+                "average_view_percentage": 56.78,
+            },
+            "top_by_views": [
+                {
+                    "youtube_title": "Sample Title",
+                    "views": 123,
+                    "average_view_percentage": 56.78,
+                }
+            ],
+            "top_by_retention": [
+                {
+                    "youtube_title": "Sample Title",
+                    "views": 123,
+                    "average_view_percentage": 56.78,
+                }
+            ],
+        }
+
+    monkeypatch.setattr(
+        main_module,
+        "generate_youtube_analytics_summary",
+        fake_generate_youtube_analytics_summary,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "format_console_summary",
+        lambda summary: ["Analyzed videos: 1 / 1"],
+    )
+
+    exit_code = main_module.main()
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert calls == [
+        {
+            "days": 14,
+            "client_secrets_path": Path("secrets/client_secret.json"),
+            "token_path": Path("data/youtube_token.json"),
+            "output_path": Path("data/youtube_analytics_summary.json"),
+        }
+    ]
+    assert "YouTube analytics summary written: data/youtube_analytics_summary.json" in captured.out
+    assert "Analyzed videos: 1 / 1" in captured.out

@@ -209,6 +209,7 @@ __marimo__/
 # Trivia Shorts Maker generated artifacts
 data/*.db
 data/youtube_token.json
+data/youtube_analytics_summary.json
 data/aivis-engine/
 secrets/
 renders/
@@ -219,6 +220,7 @@ assets/bgm/*
 assets/fonts/
 assets/local_media/
 AivisSpeech-Engine/
+AivisSpeech/
 *.png
 *.jpg
 *.jpeg

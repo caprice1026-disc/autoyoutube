@@ -27,6 +27,10 @@ from src.quality.inspector import inspect_render
 from src.render.ffmpeg_renderer import FfmpegVideoRenderer
 from src.validators.json_validator import load_json, validate_json_file
 from src.voice.aivis_client import AivisSpeechClient
+from src.youtube.analytics_summary import (
+    format_console_summary,
+    generate_youtube_analytics_summary,
+)
 from src.youtube.auth import authorize_youtube_upload
 from src.youtube.uploader import upload_private_video
 
@@ -143,6 +147,16 @@ def main() -> int:
     ya = sub.add_parser("youtube-auth", help="authorize YouTube upload access")
     ya.add_argument("--client-secrets", default="secrets/client_secret.json")
     ya.add_argument("--token-path", default="data/youtube_token.json")
+    yas = sub.add_parser(
+        "youtube-analytics-summary",
+        help="summarize uploaded YouTube videos with the Analytics API",
+    )
+    yas.add_argument("--days", type=int, default=28)
+    yas.add_argument("--client-secrets", default="secrets/client_secret.json")
+    yas.add_argument("--token-path", default="data/youtube_token.json")
+    yas.add_argument(
+        "--output-path", default="data/youtube_analytics_summary.json"
+    )
     uy = sub.add_parser(
         "upload-youtube", help="upload a rendered video to YouTube as private"
     )
@@ -222,6 +236,13 @@ def main() -> int:
             return _youtube_auth(
                 Path(args.client_secrets),
                 Path(args.token_path),
+            )
+        if args.command == "youtube-analytics-summary":
+            return _youtube_analytics_summary(
+                days=args.days,
+                client_secrets_path=Path(args.client_secrets),
+                token_path=Path(args.token_path),
+                output_path=Path(args.output_path),
             )
         if args.command == "upload-youtube":
             return _upload_youtube(Path(args.rendered_path), privacy=args.privacy)
@@ -409,6 +430,25 @@ def _fetch_visuals(
 def _youtube_auth(client_secrets_path: Path, token_path: Path) -> int:
     authorize_youtube_upload(client_secrets_path, token_path)
     print(f"YouTube OAuth token ready: {token_path.as_posix()}")
+    return 0
+
+
+def _youtube_analytics_summary(
+    *,
+    days: int,
+    client_secrets_path: Path,
+    token_path: Path,
+    output_path: Path,
+) -> int:
+    summary = generate_youtube_analytics_summary(
+        days=days,
+        client_secrets_path=client_secrets_path,
+        token_path=token_path,
+        output_path=output_path,
+    )
+    print(f"YouTube analytics summary written: {output_path.as_posix()}")
+    for line in format_console_summary(summary):
+        print(line)
     return 0
 
 

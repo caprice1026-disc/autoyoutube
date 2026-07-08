@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from src.db.database import connect, init_db
+from src.db.repositories import upsert_youtube_uploads
 from src.errors import AppError
 from src.youtube.auth import build_youtube_service
 from src.youtube.metadata import load_upload_metadata
@@ -52,7 +54,8 @@ def upload_private_video(
         watch_url=f"https://www.youtube.com/watch?v={video_id}",
         uploaded_at=uploaded_at,
     )
-    _mark_uploaded(metadata.rendered_path, result)
+    upload_record = _mark_uploaded(metadata.rendered_path, result)
+    _persist_youtube_upload_record(upload_record)
     return result
 
 
@@ -77,8 +80,17 @@ def _execute_upload(request: Any) -> dict[str, Any]:
     )
 
 
-def _mark_uploaded(rendered_path: Path, result: YoutubeUploadResult) -> None:
+def _mark_uploaded(
+    rendered_path: Path, result: YoutubeUploadResult
+) -> dict[str, Any]:
     rendered = json.loads(rendered_path.read_text(encoding="utf-8"))
+    render_id = str(rendered.get("render_id") or "").strip()
+    if not render_id:
+        raise AppError(
+            "Rendered JSON is missing render_id.",
+            location=str(rendered_path),
+            next_step="Re-render the project and upload again.",
+        )
     upload = rendered.setdefault("youtube", {}).setdefault("upload", {})
     upload.update(
         {
@@ -93,6 +105,21 @@ def _mark_uploaded(rendered_path: Path, result: YoutubeUploadResult) -> None:
     rendered_path.write_text(
         json.dumps(rendered, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
+    return {
+        "render_id": render_id,
+        "planned": bool(upload.get("planned")),
+        "status": str(upload.get("status") or "not_uploaded"),
+        "youtube_video_id": upload.get("youtube_video_id"),
+        "youtube_url": upload.get("youtube_url"),
+        "uploaded_at": upload.get("uploaded_at"),
+        "error_message": upload.get("error_message"),
+    }
+
+
+def _persist_youtube_upload_record(record: dict[str, Any]) -> None:
+    init_db()
+    with connect() as connection:
+        upsert_youtube_uploads(connection, [record])
 
 
 def _media_file_upload(path: str, *, mimetype: str, resumable: bool) -> Any:

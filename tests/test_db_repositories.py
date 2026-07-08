@@ -5,7 +5,12 @@ from pathlib import Path
 from typing import Any
 
 from src.db.database import init_db
-from src.db.repositories import insert_render_summary, upsert_project
+from src.db.repositories import (
+    insert_render_summary,
+    upsert_project,
+    upsert_youtube_metrics_snapshots,
+    upsert_youtube_uploads,
+)
 
 
 def _project(style_id: int | None = 888753760) -> dict[str, Any]:
@@ -247,3 +252,140 @@ def test_insert_render_summary_allows_missing_manual_review(tmp_path: Path) -> N
         ).fetchone()
 
     assert review_row is None
+
+
+def test_upsert_youtube_metrics_snapshots_updates_on_conflict(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "test.db"
+    init_db(db_path)
+    project = _project(style_id=888753760)
+    rendered = _rendered(project)
+
+    snapshot = {
+        "render_id": rendered["render_id"],
+        "project_id": project["id"],
+        "youtube_video_id": "abc123",
+        "snapshot_date": "2026-07-08",
+        "views": 10,
+        "engaged_views": 8,
+        "likes": 2,
+        "comments": 1,
+        "shares": 0,
+        "subscribers_gained": 1,
+        "average_view_duration": 11.5,
+        "average_view_percentage": 50.0,
+        "estimated_minutes_watched": 1.2,
+        "raw_metrics_json": "{\"views\": 10}",
+    }
+
+    with sqlite3.connect(db_path) as connection:
+        connection.row_factory = sqlite3.Row
+        upsert_project(
+            connection, project, "projects/sample/project.youtube.json", "hash"
+        )
+        insert_render_summary(connection, rendered)
+        upsert_youtube_metrics_snapshots(connection, [snapshot])
+        row = connection.execute(
+            """
+            SELECT views, likes, raw_metrics_json
+            FROM youtube_metrics_snapshots
+            WHERE youtube_video_id = ? AND snapshot_date = ?
+            """,
+            (snapshot["youtube_video_id"], snapshot["snapshot_date"]),
+        ).fetchone()
+
+        assert dict(row) == {
+            "views": 10,
+            "likes": 2,
+            "raw_metrics_json": "{\"views\": 10}",
+        }
+
+        updated = {
+            **snapshot,
+            "views": 42,
+            "likes": 9,
+            "raw_metrics_json": "{\"views\": 42}",
+        }
+        upsert_youtube_metrics_snapshots(connection, [updated])
+        row = connection.execute(
+            """
+            SELECT views, likes, raw_metrics_json
+            FROM youtube_metrics_snapshots
+            WHERE youtube_video_id = ? AND snapshot_date = ?
+            """,
+            (snapshot["youtube_video_id"], snapshot["snapshot_date"]),
+        ).fetchone()
+
+    assert dict(row) == {
+        "views": 42,
+        "likes": 9,
+        "raw_metrics_json": "{\"views\": 42}",
+    }
+
+
+def test_upsert_youtube_uploads_updates_on_conflict(tmp_path: Path) -> None:
+    db_path = tmp_path / "test.db"
+    init_db(db_path)
+    project = _project(style_id=888753760)
+    rendered = _rendered(project)
+
+    upload = {
+        "render_id": rendered["render_id"],
+        "planned": True,
+        "status": "uploaded_private",
+        "youtube_video_id": "abc123",
+        "youtube_url": "https://www.youtube.com/watch?v=abc123",
+        "uploaded_at": "2026-07-08T00:00:00Z",
+        "error_message": None,
+    }
+
+    with sqlite3.connect(db_path) as connection:
+        connection.row_factory = sqlite3.Row
+        upsert_project(
+            connection, project, "projects/sample/project.youtube.json", "hash"
+        )
+        insert_render_summary(connection, rendered)
+        upsert_youtube_uploads(connection, [upload])
+        row = connection.execute(
+            """
+            SELECT planned, status, youtube_video_id, youtube_url, uploaded_at, error_message
+            FROM youtube_uploads
+            WHERE render_id = ?
+            """,
+            (rendered["render_id"],),
+        ).fetchone()
+
+        assert dict(row) == {
+            "planned": 1,
+            "status": "uploaded_private",
+            "youtube_video_id": "abc123",
+            "youtube_url": "https://www.youtube.com/watch?v=abc123",
+            "uploaded_at": "2026-07-08T00:00:00Z",
+            "error_message": None,
+        }
+
+        updated = {
+            **upload,
+            "status": "uploaded_public",
+            "youtube_url": "https://www.youtube.com/watch?v=xyz789",
+            "error_message": "updated",
+        }
+        upsert_youtube_uploads(connection, [updated])
+        row = connection.execute(
+            """
+            SELECT planned, status, youtube_video_id, youtube_url, uploaded_at, error_message
+            FROM youtube_uploads
+            WHERE render_id = ?
+            """,
+            (rendered["render_id"],),
+        ).fetchone()
+
+    assert dict(row) == {
+        "planned": 1,
+        "status": "uploaded_public",
+        "youtube_video_id": "abc123",
+        "youtube_url": "https://www.youtube.com/watch?v=xyz789",
+        "uploaded_at": "2026-07-08T00:00:00Z",
+        "error_message": "updated",
+    }

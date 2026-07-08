@@ -419,6 +419,45 @@ def list_active_media_assets(connection: sqlite3.Connection) -> list[MediaAsset]
     return [_media_asset_from_row(row) for row in rows]
 
 
+def upsert_youtube_uploads(
+    connection: sqlite3.Connection, uploads: list[dict[str, Any]]
+) -> None:
+    for upload in uploads:
+        render_id = str(upload.get("render_id") or "").strip()
+        if not render_id:
+            continue
+        render_exists = connection.execute(
+            "SELECT 1 FROM youtube_renders WHERE render_id = ?",
+            (render_id,),
+        ).fetchone()
+        if render_exists is None:
+            continue
+        connection.execute(
+            """
+            INSERT INTO youtube_uploads (
+                render_id, planned, status, youtube_video_id, youtube_url,
+                uploaded_at, error_message
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(render_id) DO UPDATE SET
+                planned = excluded.planned,
+                status = excluded.status,
+                youtube_video_id = excluded.youtube_video_id,
+                youtube_url = excluded.youtube_url,
+                uploaded_at = excluded.uploaded_at,
+                error_message = excluded.error_message
+            """,
+            (
+                render_id,
+                int(bool(upload.get("planned"))),
+                upload.get("status") or "not_uploaded",
+                upload.get("youtube_video_id"),
+                upload.get("youtube_url"),
+                upload.get("uploaded_at"),
+                upload.get("error_message"),
+            ),
+        )
+
+
 def _bgm_track_from_row(row: sqlite3.Row) -> BgmTrack:
     from pathlib import Path
 
@@ -464,6 +503,53 @@ def _media_asset_from_row(row: sqlite3.Row) -> MediaAsset:
         used_count=int(row["used_count"]),
         is_active=bool(row["is_active"]),
     )
+
+
+def upsert_youtube_metrics_snapshots(
+    connection: sqlite3.Connection, snapshots: list[dict[str, Any]]
+) -> None:
+    for snapshot in snapshots:
+        connection.execute(
+            """
+            INSERT INTO youtube_metrics_snapshots (
+                render_id, project_id, youtube_video_id, snapshot_date,
+                views, engaged_views, likes, comments, shares,
+                subscribers_gained, average_view_duration,
+                average_view_percentage, estimated_minutes_watched,
+                raw_metrics_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(youtube_video_id, snapshot_date) DO UPDATE SET
+                render_id = excluded.render_id,
+                project_id = excluded.project_id,
+                collected_at = CURRENT_TIMESTAMP,
+                views = excluded.views,
+                engaged_views = excluded.engaged_views,
+                likes = excluded.likes,
+                comments = excluded.comments,
+                shares = excluded.shares,
+                subscribers_gained = excluded.subscribers_gained,
+                average_view_duration = excluded.average_view_duration,
+                average_view_percentage = excluded.average_view_percentage,
+                estimated_minutes_watched = excluded.estimated_minutes_watched,
+                raw_metrics_json = excluded.raw_metrics_json
+            """,
+            (
+                snapshot["render_id"],
+                snapshot["project_id"],
+                snapshot["youtube_video_id"],
+                snapshot["snapshot_date"],
+                snapshot.get("views"),
+                snapshot.get("engaged_views"),
+                snapshot.get("likes"),
+                snapshot.get("comments"),
+                snapshot.get("shares"),
+                snapshot.get("subscribers_gained"),
+                snapshot.get("average_view_duration"),
+                snapshot.get("average_view_percentage"),
+                snapshot.get("estimated_minutes_watched"),
+                snapshot.get("raw_metrics_json"),
+            ),
+        )
 
 
 def _optional_bool_int(value: Any) -> int | None:

@@ -1,42 +1,5 @@
 {
-  "schema_version": "youtube-1.0.0",
-  "platform_profile": "youtube_shorts",
-  "id": "trivia_deep_sea_bioluminescence_001",
-  "topic": "深海で光る生き物の理由",
-  "title": "深海の光る生き物",
-  "hook": "深海で光る生き物の光は、きれいなだけではありません。",
-  "target": {
-    "duration_sec": 60,
-    "aspect_ratio": "9:16",
-    "resolution": {
-      "width": 1080,
-      "height": 1920
-    },
-    "fps": 30,
-    "video_format": {
-      "container": "mp4",
-      "video_codec": "libx264",
-      "audio_codec": "aac",
-      "pix_fmt": "yuv420p"
-    }
-  },
-  "voice": {
-    "engine": "aivis_speech",
-    "speaker": "まお",
-    "style_id": 888753760,
-    "speed_scale": 1.0,
-    "pitch_scale": 0.0,
-    "intonation_scale": 1.0,
-    "sentence_gap_ms": 180
-  },
   "bgm": {
-    "enabled": true,
-    "strategy": "youtube_safe_bgm",
-    "mood": "mysterious",
-    "intensity": "low",
-    "volume_db": -26,
-    "fade_in_ms": 500,
-    "fade_out_ms": 1200,
     "allow_sources": [
       "youtube_audio_library"
     ],
@@ -44,16 +7,153 @@
       "vocal",
       "too_loud",
       "copyright_risky"
-    ]
-  },
-  "visual_strategy": {
-    "source_priority": [
-      "pexels",
-      "local"
     ],
-    "preferred_orientation": "portrait",
+    "enabled": true,
+    "fade_in_ms": 500,
+    "fade_out_ms": 1200,
+    "intensity": "low",
+    "mood": "mysterious",
+    "strategy": "youtube_safe_bgm",
+    "volume_db": -26
+  },
+  "fact_check_notes": "生物発光の用途として、威嚇、合図、捕食誘引が一般的な説明として妥当か確認する。",
+  "hook": "深海で光る生き物の光は、きれいなだけではありません。",
+  "id": "trivia_deep_sea_bioluminescence_001",
+  "manual_fact_check_required": true,
+  "platform_profile": "youtube_shorts",
+  "production_notes": "1分品質チェック用台本から作成。生成後にquality_report.jsonで機械検査し、目視レビューを行う。",
+  "schema_version": "youtube-1.0.0",
+  "script": [
+    {
+      "caption_style_hint": "normal",
+      "estimated_duration_sec": 3.5,
+      "index": 1,
+      "text": "深海には、太陽の光がほとんど届きません。",
+      "visual_query": "deep ocean underwater"
+    },
+    {
+      "caption_style_hint": "emphasis",
+      "estimated_duration_sec": 3.5,
+      "index": 2,
+      "text": "でも、そこには自分で光る生き物がいます。",
+      "visual_query": "glowing jellyfish"
+    },
+    {
+      "caption_style_hint": "normal",
+      "estimated_duration_sec": 3.2,
+      "index": 3,
+      "text": "この光は、ただ綺麗なだけではありません。",
+      "visual_query": "dark sea mysterious"
+    },
+    {
+      "caption_style_hint": "emphasis",
+      "estimated_duration_sec": 1.8,
+      "index": 4,
+      "text": "敵をおどかすため。",
+      "visual_query": "deep sea creature"
+    },
+    {
+      "caption_style_hint": "normal",
+      "estimated_duration_sec": 2.2,
+      "index": 5,
+      "text": "仲間に合図を送るため。",
+      "visual_query": "glowing plankton"
+    },
+    {
+      "caption_style_hint": "emphasis",
+      "estimated_duration_sec": 4.0,
+      "index": 6,
+      "text": "そして、獲物をおびき寄せるためにも使われます。",
+      "visual_query": "anglerfish deep sea"
+    },
+    {
+      "caption_style_hint": "normal",
+      "estimated_duration_sec": 5.5,
+      "index": 7,
+      "text": "たとえばチョウチンアンコウは、頭の先にある光で小さな魚を誘います。",
+      "visual_query": "anglerfish underwater"
+    },
+    {
+      "caption_style_hint": "normal",
+      "estimated_duration_sec": 5.0,
+      "index": 8,
+      "text": "暗闇の中で光るものは、まるで看板のように目立つからです。",
+      "visual_query": "bioluminescence ocean"
+    },
+    {
+      "caption_style_hint": "question",
+      "estimated_duration_sec": 3.0,
+      "index": 9,
+      "text": "でも、光ることにはリスクもあります。",
+      "visual_query": "dark ocean predator"
+    },
+    {
+      "caption_style_hint": "normal",
+      "estimated_duration_sec": 3.8,
+      "index": 10,
+      "text": "自分の場所を、敵にも知らせてしまうからです。",
+      "visual_query": "predator underwater"
+    },
+    {
+      "caption_style_hint": "emphasis",
+      "estimated_duration_sec": 4.5,
+      "index": 11,
+      "text": "だから深海生物の光は、使うタイミングがとても重要です。",
+      "visual_query": "deep sea life"
+    },
+    {
+      "caption_style_hint": "normal",
+      "estimated_duration_sec": 4.2,
+      "index": 12,
+      "text": "ずっと光るのではなく、必要な時だけ光るものもいます。",
+      "visual_query": "glowing jellyfish dark water"
+    },
+    {
+      "caption_style_hint": "punchline",
+      "estimated_duration_sec": 4.8,
+      "index": 13,
+      "text": "深海の光は、暗闇の中で生き残るための言葉なのです。",
+      "visual_query": "blue deep ocean"
+    },
+    {
+      "caption_style_hint": "normal",
+      "estimated_duration_sec": 5.0,
+      "index": 14,
+      "text": "綺麗に見えるその光は、命をつなぐための道具でもあります。",
+      "visual_query": "bioluminescent sea"
+    },
+    {
+      "caption_style_hint": "punchline",
+      "estimated_duration_sec": 5.5,
+      "index": 15,
+      "text": "もし海の底に街があるなら、きっとその看板は、生き物たちの光です。",
+      "visual_query": "glowing ocean night"
+    }
+  ],
+  "target": {
+    "aspect_ratio": "9:16",
+    "duration_sec": 60,
+    "fps": 30,
+    "resolution": {
+      "height": 1920,
+      "width": 1080
+    },
+    "video_format": {
+      "audio_codec": "aac",
+      "container": "mp4",
+      "pix_fmt": "yuv420p",
+      "video_codec": "libx264"
+    }
+  },
+  "title": "深海の光る生き物",
+  "topic": "深海で光る生き物の理由",
+  "visual_strategy": {
+    "avoid_keywords": [
+      "aquarium",
+      "toy",
+      "cartoon"
+    ],
     "fallback": "crop_landscape_to_9_16",
-    "primary_query": "bioluminescence ocean",
     "fallback_queries": [
       "glowing jellyfish",
       "deep ocean underwater",
@@ -61,142 +161,23 @@
       "glowing plankton",
       "blue deep ocean"
     ],
-    "avoid_keywords": [
-      "aquarium",
-      "toy",
-      "cartoon"
+    "preferred_orientation": "portrait",
+    "primary_query": "bioluminescence ocean",
+    "source_priority": [
+      "pexels",
+      "local"
     ]
   },
-  "script": [
-    {
-      "index": 1,
-      "text": "深海には、太陽の光がほとんど届きません。",
-      "visual_query": "deep ocean underwater",
-      "estimated_duration_sec": 3.5,
-      "caption_style_hint": "normal"
-    },
-    {
-      "index": 2,
-      "text": "でも、そこには自分で光る生き物がいます。",
-      "visual_query": "glowing jellyfish",
-      "estimated_duration_sec": 3.5,
-      "caption_style_hint": "emphasis"
-    },
-    {
-      "index": 3,
-      "text": "この光は、ただ綺麗なだけではありません。",
-      "visual_query": "dark sea mysterious",
-      "estimated_duration_sec": 3.2,
-      "caption_style_hint": "normal"
-    },
-    {
-      "index": 4,
-      "text": "敵をおどかすため。",
-      "visual_query": "deep sea creature",
-      "estimated_duration_sec": 1.8,
-      "caption_style_hint": "emphasis"
-    },
-    {
-      "index": 5,
-      "text": "仲間に合図を送るため。",
-      "visual_query": "glowing plankton",
-      "estimated_duration_sec": 2.2,
-      "caption_style_hint": "normal"
-    },
-    {
-      "index": 6,
-      "text": "そして、獲物をおびき寄せるためにも使われます。",
-      "visual_query": "anglerfish deep sea",
-      "estimated_duration_sec": 4.0,
-      "caption_style_hint": "emphasis"
-    },
-    {
-      "index": 7,
-      "text": "たとえばチョウチンアンコウは、頭の先にある光で小さな魚を誘います。",
-      "visual_query": "anglerfish underwater",
-      "estimated_duration_sec": 5.5,
-      "caption_style_hint": "normal"
-    },
-    {
-      "index": 8,
-      "text": "暗闇の中で光るものは、まるで看板のように目立つからです。",
-      "visual_query": "bioluminescence ocean",
-      "estimated_duration_sec": 5.0,
-      "caption_style_hint": "normal"
-    },
-    {
-      "index": 9,
-      "text": "でも、光ることにはリスクもあります。",
-      "visual_query": "dark ocean predator",
-      "estimated_duration_sec": 3.0,
-      "caption_style_hint": "question"
-    },
-    {
-      "index": 10,
-      "text": "自分の場所を、敵にも知らせてしまうからです。",
-      "visual_query": "predator underwater",
-      "estimated_duration_sec": 3.8,
-      "caption_style_hint": "normal"
-    },
-    {
-      "index": 11,
-      "text": "だから深海生物の光は、使うタイミングがとても重要です。",
-      "visual_query": "deep sea life",
-      "estimated_duration_sec": 4.5,
-      "caption_style_hint": "emphasis"
-    },
-    {
-      "index": 12,
-      "text": "ずっと光るのではなく、必要な時だけ光るものもいます。",
-      "visual_query": "glowing jellyfish dark water",
-      "estimated_duration_sec": 4.2,
-      "caption_style_hint": "normal"
-    },
-    {
-      "index": 13,
-      "text": "深海の光は、暗闇の中で生き残るための言葉なのです。",
-      "visual_query": "blue deep ocean",
-      "estimated_duration_sec": 4.8,
-      "caption_style_hint": "punchline"
-    },
-    {
-      "index": 14,
-      "text": "綺麗に見えるその光は、命をつなぐための道具でもあります。",
-      "visual_query": "bioluminescent sea",
-      "estimated_duration_sec": 5.0,
-      "caption_style_hint": "normal"
-    },
-    {
-      "index": 15,
-      "text": "もし海の底に街があるなら、きっとその看板は、生き物たちの光です。",
-      "visual_query": "glowing ocean night",
-      "estimated_duration_sec": 5.5,
-      "caption_style_hint": "punchline"
-    }
-  ],
+  "voice": {
+    "engine": "aivis_speech",
+    "intonation_scale": 1.0,
+    "pitch_scale": 0.0,
+    "sentence_gap_ms": 180,
+    "speaker": "まお",
+    "speed_scale": 1.0,
+    "style_id": 888753760
+  },
   "youtube": {
-    "title": "深海で光る生き物の理由 #Shorts",
-    "description": "深海で光る生き物が、なぜ光を使うのかを短く紹介します。",
-    "hashtags": [
-      "#雑学",
-      "#深海",
-      "#Shorts"
-    ],
-    "tags": [
-      "雑学",
-      "深海",
-      "生物発光",
-      "チョウチンアンコウ"
-    ],
-    "category_hint": "education",
-    "privacy_status": "private",
-    "made_for_kids": false,
-    "contains_synthetic_voice": true,
-    "description_sections": {
-      "summary": "深海生物の光は、合図、威嚇、獲物を誘うためなど、生き残るために使われます。",
-      "credits_policy": "include_pexels_and_bgm_credits",
-      "disclaimer": "投稿前に内容のファクトチェックを行ってください。"
-    },
     "analytics_hypothesis": {
       "experiment_group": "bioluminescence_mysterious_low",
       "hypothesis": "深海の暗さと光の役割を対比すると、最後まで視聴されやすい。",
@@ -205,9 +186,28 @@
         "views",
         "likes"
       ]
-    }
-  },
-  "manual_fact_check_required": true,
-  "fact_check_notes": "生物発光の用途として、威嚇、合図、捕食誘引が一般的な説明として妥当か確認する。",
-  "production_notes": "1分品質チェック用台本から作成。生成後にquality_report.jsonで機械検査し、目視レビューを行う。"
+    },
+    "category_hint": "education",
+    "contains_synthetic_voice": true,
+    "description": "深海で光る生き物が、なぜ光を使うのかを短く紹介します。",
+    "description_sections": {
+      "credits_policy": "include_pexels_and_bgm_credits",
+      "disclaimer": "投稿前に内容のファクトチェックを行ってください。",
+      "summary": "深海生物の光は、合図、威嚇、獲物を誘うためなど、生き残るために使われます。"
+    },
+    "hashtags": [
+      "#雑学",
+      "#深海",
+      "#Shorts"
+    ],
+    "made_for_kids": false,
+    "privacy_status": "private",
+    "tags": [
+      "雑学",
+      "深海",
+      "生物発光",
+      "チョウチンアンコウ"
+    ],
+    "title": "深海で光る生き物の理由 #Shorts"
+  }
 }
