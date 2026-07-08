@@ -310,7 +310,14 @@ def _extract_frame(
 
 
 def _run_ffmpeg(command: list[str], output_path: Path, error_message: str) -> None:
-    completed = subprocess.run(command, capture_output=True, check=False, text=True)
+    completed = subprocess.run(
+        command,
+        capture_output=True,
+        check=False,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
     if completed.returncode != 0:
         raise AppError(
             error_message,
