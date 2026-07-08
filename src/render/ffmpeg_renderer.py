@@ -288,7 +288,14 @@ class FfmpegVideoRenderer:
         stderr_log_path = logs_dir / "ffmpeg_stderr.log"
         command_log_path.write_text(_format_command_log([command]), encoding="utf-8")
 
-        result = subprocess.run(command, cwd=render_dir, capture_output=True, text=True)
+        result = subprocess.run(
+            command,
+            cwd=render_dir,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
         stderr_log_path.write_text(result.stderr, encoding="utf-8")
         if result.returncode != 0:
             tail = result.stderr[-2000:]
@@ -387,7 +394,14 @@ def _run_timeline_command(
     command: list[str], render_dir: Path, logs_dir: Path, output_path: Path
 ) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    result = subprocess.run(command, cwd=render_dir, capture_output=True, text=True)
+    result = subprocess.run(
+        command,
+        cwd=render_dir,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
     log_path = logs_dir / f"{output_path.stem}_stderr.log"
     log_path.write_text(result.stderr, encoding="utf-8")
     if result.returncode != 0:
@@ -570,7 +584,11 @@ def _winget_ffmpeg_candidates() -> list[Path]:
 
 def _ffmpeg_version(ffmpeg_path: Path) -> str:
     result = subprocess.run(
-        [str(ffmpeg_path), "-version"], capture_output=True, text=True
+        [str(ffmpeg_path), "-version"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     if result.returncode != 0:
         return "unknown"
