@@ -5,8 +5,12 @@ from typing import Any
 
 from src.errors import AppError
 
-YOUTUBE_UPLOAD_SCOPE = "https://www.googleapis.com/auth/youtube.upload"
 
+YOUTUBE_SCOPES = [
+    "https://www.googleapis.com/auth/youtube.upload",
+    "https://www.googleapis.com/auth/youtube.readonly",
+    "https://www.googleapis.com/auth/yt-analytics.readonly",
+]
 
 def authorize_youtube_upload(
     client_secrets_path: Path = Path("secrets/client_secret.json"),
