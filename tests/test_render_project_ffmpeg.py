@@ -310,6 +310,71 @@ def test_render_project_selects_bgm_and_passes_it_to_video_renderer(
     ]
 
 
+def test_render_project_falls_back_to_default_bgm_manifest_when_db_is_empty(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project = _project()
+    project["bgm"]["strategy"] = "youtube_safe_bgm"
+    project["bgm"].pop("track_id", None)
+    project_path = tmp_path / "project.youtube.json"
+    project_path.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+
+    bgm_path = tmp_path / "No One Here Gets In Alive - National Sweetheart.mp3"
+    bgm_path.write_bytes(b"fake mp3")
+    manifest_path = tmp_path / "bgm_manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "tracks": [
+                    {
+                        "track_id": "No One Here Gets In Alive",
+                        "file_path": bgm_path.name,
+                        "title": "No One Here Gets In Alive",
+                        "artist": "National Sweetheart",
+                        "source": "youtube_audio_library",
+                        "license_type": "youtube_audio_library_standard",
+                        "attribution_required": False,
+                        "attribution_text": "Music: No One Here Gets In Alive by National Sweetheart from YouTube Audio Library",
+                        "mood": "mysterious",
+                        "intensity": "low",
+                        "loopable": True,
+                        "allowed_platforms": ["youtube_shorts"],
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(render_module, "BGM_MANIFEST_PATH", manifest_path)
+    monkeypatch.setattr(render_module, "RENDERS_DIR", tmp_path / "renders")
+    monkeypatch.setattr(render_module, "init_db", lambda: None)
+    monkeypatch.setattr(render_module, "connect", lambda: NullConnection())
+    monkeypatch.setattr(render_module, "list_active_bgm_tracks", lambda connection: [])
+    monkeypatch.setattr(
+        render_module, "list_active_media_assets", lambda connection: []
+    )
+    monkeypatch.setattr(render_module, "upsert_project", lambda *args: None)
+    monkeypatch.setattr(render_module, "insert_render_summary", lambda *args: None)
+    renderer = FakeVideoRenderer()
+
+    rendered_path = render_project(project_path, video_renderer=renderer)
+
+    rendered = json.loads(rendered_path.read_text(encoding="utf-8"))
+    assert renderer.calls[0]["bgm"]["track_id"] == "No One Here Gets In Alive"
+    assert renderer.calls[0]["bgm"]["file_path"] == str(bgm_path.resolve())
+    assert rendered["bgm"]["track_id"] == "No One Here Gets In Alive"
+    assert rendered["bgm"]["file_path"] == str(bgm_path.resolve())
+    assert rendered["credits"]["items"] == [
+        {
+            "credit_type": "bgm",
+            "source": "youtube_audio_library",
+            "text": "Music: No One Here Gets In Alive by National Sweetheart from YouTube Audio Library",
+            "url": None,
+        }
+    ]
+
+
 def test_render_project_adds_pexels_video_credit_once_with_bgm_credit(
     tmp_path: Path, monkeypatch
 ) -> None:

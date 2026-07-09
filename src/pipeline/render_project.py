@@ -10,8 +10,16 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from src.bgm.library import BgmTrack
+from src.bgm.library import load_bgm_manifest
 from src.bgm.selector import select_bgm_track
-from src.config import PROJECT_SCHEMA_PATH, RENDERED_SCHEMA_PATH, RENDERS_DIR
+from src.config import (
+    BGM_MANIFEST_PATH,
+    DEFAULT_BGM_FILE_PATH,
+    DEFAULT_BGM_TRACK_ID,
+    PROJECT_SCHEMA_PATH,
+    RENDERED_SCHEMA_PATH,
+    RENDERS_DIR,
+)
 from src.defaults import (
     DEFAULT_AUDIO_CODEC,
     DEFAULT_CRF,
@@ -35,6 +43,7 @@ from src.db.repositories import (
     insert_render_summary,
     list_active_bgm_tracks,
     list_active_media_assets,
+    upsert_bgm_tracks,
     upsert_project,
 )
 from src.errors import AppError
@@ -118,6 +127,7 @@ def render_project(
         voice_service,
     )
     selected_bgm = _select_render_bgm(project["bgm"])
+    _persist_render_bgm_track(selected_bgm)
     bgm_render = _build_bgm_render(project["bgm"], selected_bgm, actual_duration)
     visuals = _select_render_visuals(
         project,
@@ -518,11 +528,65 @@ def _render_video(
 def _select_render_bgm(project_bgm: dict[str, Any]) -> BgmTrack | None:
     if not project_bgm.get("enabled") or project_bgm.get("strategy") == "none":
         return None
+    requested_track_id = str(project_bgm.get("track_id") or "").strip()
     with connect() as connection:
         tracks = list_active_bgm_tracks(connection)
-    if not tracks:
-        return None
-    return select_bgm_track(project_bgm, tracks)
+    if tracks:
+        try:
+            return select_bgm_track(project_bgm, tracks)
+        except AppError:
+            if requested_track_id:
+                raise
+    if not requested_track_id and project_bgm.get("strategy") == "youtube_safe_bgm":
+        return _load_default_render_bgm_track()
+    return None
+
+
+def _load_default_render_bgm_track() -> BgmTrack:
+    if BGM_MANIFEST_PATH.is_file():
+        tracks = load_bgm_manifest(BGM_MANIFEST_PATH)
+        for track in tracks:
+            if track.track_id == DEFAULT_BGM_TRACK_ID:
+                return track
+
+    if not DEFAULT_BGM_FILE_PATH.is_file():
+        raise AppError(
+            "Default BGM file was not found.",
+            location=str(DEFAULT_BGM_FILE_PATH),
+            next_step=(
+                "Restore assets/bgm/No One Here Gets In Alive - National Sweetheart.mp3 "
+                "or import the BGM manifest again."
+            ),
+        )
+
+    return BgmTrack(
+        track_id=DEFAULT_BGM_TRACK_ID,
+        file_path=DEFAULT_BGM_FILE_PATH.resolve(),
+        title=DEFAULT_BGM_TRACK_ID,
+        artist="National Sweetheart",
+        source="youtube_audio_library",
+        license_type="youtube_audio_library_standard",
+        attribution_required=False,
+        attribution_text=(
+            "Music: No One Here Gets In Alive by National Sweetheart from YouTube Audio Library"
+        ),
+        mood="mysterious",
+        intensity="low",
+        duration_sec=None,
+        bpm=None,
+        loopable=True,
+        allowed_platforms=["youtube_shorts"],
+        used_count=0,
+        is_active=True,
+    )
+
+
+def _persist_render_bgm_track(track: BgmTrack | None) -> None:
+    if track is None:
+        return
+    with connect() as connection:
+        if hasattr(connection, "execute"):
+            upsert_bgm_tracks(connection, [track])
 
 
 def _select_render_visuals(
