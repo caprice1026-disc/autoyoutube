@@ -25,6 +25,7 @@ from src.defaults import (
     DEFAULT_CRF,
     DEFAULT_PIX_FMT,
     DEFAULT_PRESET,
+    MAX_BGM_VOLUME_DB,
     DEFAULT_SUBTITLE_ALIGNMENT,
     DEFAULT_SUBTITLE_FONT_NAME,
     DEFAULT_SUBTITLE_FONT_SIZE,
@@ -728,6 +729,8 @@ def _build_bgm_render(
 ) -> dict[str, Any] | None:
     if track is None:
         return None
+    requested_volume_db = float(project_bgm["volume_db"])
+    effective_volume_db = max(requested_volume_db, MAX_BGM_VOLUME_DB)
     return {
         "enabled": True,
         "strategy": project_bgm["strategy"],
@@ -741,7 +744,7 @@ def _build_bgm_render(
         "attribution_text": track.attribution_text,
         "mood": track.mood,
         "intensity": track.intensity,
-        "volume_db": project_bgm["volume_db"],
+        "volume_db": effective_volume_db,
         "fade_in_ms": project_bgm["fade_in_ms"],
         "fade_out_ms": project_bgm["fade_out_ms"],
         "looped": bool(

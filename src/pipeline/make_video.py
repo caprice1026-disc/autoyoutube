@@ -132,6 +132,11 @@ def make_video(options: MakeVideoOptions) -> MakeVideoResult:
                         max_downloads=max_downloads,
                         orientation=options.orientation,
                         size=options.size,
+                        additional_queries=(
+                            None
+                            if options.query_mode == "override"
+                            else options.visual_keywords
+                        ),
                     )
                     duplicates = _duplicate_selected_assets(visual_plan)
                     if duplicates:
@@ -355,7 +360,9 @@ def _project_with_visual_keywords(
 
     if options.query_mode == "override":
         visual_strategy["primary_query"] = keywords[0]
-        visual_strategy["fallback_queries"] = keywords[1:] or [keywords[0]]
+        visual_strategy["fallback_queries"] = _limit_unique_queries(
+            keywords[1:] or [keywords[0]], 8
+        )
         script = updated.get("script", [])
         if isinstance(script, list):
             for index, item in enumerate(script):
@@ -366,8 +373,8 @@ def _project_with_visual_keywords(
     fallback_queries = visual_strategy.get("fallback_queries", [])
     if not isinstance(fallback_queries, list):
         fallback_queries = []
-    visual_strategy["fallback_queries"] = _unique_non_empty(
-        [str(query) for query in fallback_queries] + keywords
+    visual_strategy["fallback_queries"] = _limit_unique_queries(
+        [str(query) for query in fallback_queries] + keywords, 8
     )
     return updated
 
@@ -404,6 +411,10 @@ def _unique_non_empty(values: list[str]) -> list[str]:
     return output
 
 
+def _limit_unique_queries(values: list[str], limit: int) -> list[str]:
+    return _unique_non_empty(values)[:limit]
+
+
 def _fetch_visuals(
     project_path: Path,
     *,
@@ -411,6 +422,7 @@ def _fetch_visuals(
     max_downloads: int | None,
     orientation: str,
     size: str,
+    additional_queries: list[str] | None = None,
 ) -> dict[str, Any]:
     result = fetch_visuals_for_project(
         project_path,
@@ -420,6 +432,7 @@ def _fetch_visuals(
         max_downloads=max_downloads,
         orientation=orientation,
         size=size,
+        additional_queries=additional_queries,
     )
     with connect() as connection:
         upsert_media_assets(connection, result.assets)

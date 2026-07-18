@@ -7,6 +7,7 @@ from typing import Any
 
 from src.bgm.library import BgmTrack
 from src.media.library import MediaAsset
+from src.defaults import MAX_BGM_VOLUME_DB
 from src.pipeline.render_project import render_project
 import src.pipeline.render_project as render_module
 
@@ -295,7 +296,7 @@ def test_render_project_selects_bgm_and_passes_it_to_video_renderer(
     rendered = json.loads(rendered_path.read_text(encoding="utf-8"))
     assert renderer.calls[0]["bgm"]["track_id"] == "mystery_low"
     assert renderer.calls[0]["bgm"]["file_path"] == str(bgm_path)
-    assert renderer.calls[0]["bgm"]["volume_db"] == -26
+    assert renderer.calls[0]["bgm"]["volume_db"] == MAX_BGM_VOLUME_DB
     assert rendered["bgm"]["enabled"] is True
     assert rendered["bgm"]["track_id"] == "mystery_low"
     assert rendered["bgm"]["looped"] is False

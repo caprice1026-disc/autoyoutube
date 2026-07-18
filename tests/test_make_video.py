@@ -256,6 +256,7 @@ def test_make_video_retries_visual_quality_issue_with_rejected_asset(
         max_downloads: int | None,
         orientation: str,
         size: str,
+        additional_queries: list[str] | None = None,
     ) -> None:
         fetch_calls.append((per_query, max_downloads))
 
@@ -441,6 +442,7 @@ def test_make_video_uses_cli_visual_keywords_for_actual_pexels_query_project(
         max_downloads: int | None,
         orientation: str,
         size: str,
+        additional_queries: list[str] | None = None,
     ) -> dict[str, Any]:
         fetch_projects.append(json.loads(project_path.read_text(encoding="utf-8")))
         return {}
@@ -497,6 +499,84 @@ def test_make_video_uses_cli_visual_keywords_for_actual_pexels_query_project(
         "macro metal mesh",
     ]
     assert render_project == fetch_project
+
+
+def test_make_video_caps_saved_fallback_queries_while_forwarding_all_cli_keywords(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project_path = _write_project(tmp_path)
+    fetch_projects: list[dict[str, Any]] = []
+    fetch_additional_queries: list[list[str] | None] = []
+    monkeypatch.setattr(make_video_module, "RENDERS_DIR", tmp_path / "renders")
+    monkeypatch.setattr(make_video_module, "init_db", lambda: None)
+
+    def fake_fetch_visuals(
+        project_path: Path,
+        *,
+        per_query: int,
+        max_downloads: int | None,
+        orientation: str,
+        size: str,
+        additional_queries: list[str] | None = None,
+    ) -> dict[str, Any]:
+        fetch_projects.append(json.loads(project_path.read_text(encoding="utf-8")))
+        fetch_additional_queries.append(additional_queries)
+        return {}
+
+    def fake_render_attempt(
+        options: MakeVideoOptions,
+        project_path: Path,
+        attempt_dir: Path,
+        rejected_asset_ids: set[str],
+        rejected_source_keys: set[str],
+    ) -> Path:
+        attempt_dir.mkdir(parents=True, exist_ok=True)
+        rendered_path = attempt_dir / "rendered.youtube.json"
+        rendered_path.write_text(json.dumps({"visuals": []}), encoding="utf-8")
+        return rendered_path
+
+    monkeypatch.setattr(make_video_module, "_fetch_visuals", fake_fetch_visuals)
+    monkeypatch.setattr(make_video_module, "_render_attempt", fake_render_attempt)
+    monkeypatch.setattr(make_video_module, "_inspect_attempt", lambda *args: None)
+    monkeypatch.setattr(
+        make_video_module,
+        "evaluate_render",
+        lambda rendered_path: {
+            "summary": {"status": "pass", "error_count": 0, "warning_count": 0},
+            "checks": [],
+        },
+    )
+
+    cli_keywords = [
+        "macro metal mesh",
+        "warm kitchen close up",
+        "glass steam close up",
+        "pudding spoon close up",
+        "golden caramel close up",
+        "custard texture close up",
+        "kitchen dessert close up",
+        "eggs and milk close up",
+        "silky dessert close up",
+    ]
+
+    result = make_video(
+        MakeVideoOptions(
+            project_path=project_path,
+            visual_keywords=cli_keywords,
+            query_mode="append",
+            voice_mode="dry-run",
+            video_mode="dry-run",
+            max_fix_attempts=1,
+            skip_inspect=True,
+        )
+    )
+
+    assert result.exit_code == 0
+    assert fetch_projects
+    assert fetch_additional_queries == [cli_keywords]
+    saved_project = fetch_projects[0]
+    assert len(saved_project["visual_strategy"]["fallback_queries"]) <= 8
+    assert "macro metal mesh" in saved_project["visual_strategy"]["fallback_queries"]
 
 
 def test_make_video_cli_passes_options(monkeypatch, capsys) -> None:

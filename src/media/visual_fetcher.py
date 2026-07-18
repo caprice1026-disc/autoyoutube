@@ -36,9 +36,21 @@ def fetch_visuals_for_project(
     orientation: str | None = "portrait",
     size: str | None = "small",
     plan_path: Path | None = None,
+    additional_queries: list[str] | None = None,
 ) -> VisualFetchResult:
     project = load_json(project_path)
     specs = visual_query_specs(project)
+    if additional_queries:
+        extra_specs = [
+            VisualQuerySpec(
+                query=query,
+                source="cli.visual_keyword",
+                script_indices=[],
+            )
+            for query in (_clean(item) for item in additional_queries)
+            if query
+        ]
+        specs = _dedupe_specs(specs + extra_specs)
     if not specs:
         raise AppError(
             "No visual queries were found.",
