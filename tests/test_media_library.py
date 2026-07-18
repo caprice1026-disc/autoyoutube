@@ -96,6 +96,45 @@ def test_select_media_asset_matches_visual_query_and_lowest_used_count(
     assert selected == fresh
 
 
+def test_select_media_asset_prefers_more_specific_query_match(tmp_path: Path) -> None:
+    broad = MediaAsset(
+        asset_id="broad",
+        source="pexels",
+        local_file_path=tmp_path / "broad.mp4",
+        original_width=1080,
+        original_height=1920,
+        original_duration_sec=10,
+        orientation="portrait",
+        selected_quality="hd",
+        query="close up candy",
+        tags=["close", "up"],
+        used_count=0,
+        is_active=True,
+    )
+    specific = MediaAsset(
+        asset_id="specific",
+        source="pexels",
+        local_file_path=tmp_path / "specific.mp4",
+        original_width=1080,
+        original_height=1920,
+        original_duration_sec=10,
+        orientation="portrait",
+        selected_quality="hd",
+        query="can tab macro close up",
+        tags=["can", "tab", "macro"],
+        used_count=0,
+        is_active=True,
+    )
+
+    selected = select_media_asset(
+        {"visual_query": "can tab macro close up"},
+        {"source_priority": ["pexels"], "avoid_keywords": []},
+        [broad, specific],
+    )
+
+    assert selected == specific
+
+
 def test_select_media_asset_returns_none_when_no_asset_matches(tmp_path: Path) -> None:
     selected = select_media_asset(
         {"visual_query": "submarine"},

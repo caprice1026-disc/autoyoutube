@@ -20,6 +20,7 @@ FRAME_STRIP_HEIGHT = 240
 WAVEFORM_HEIGHT = 220
 SUBTITLE_BAND_HEIGHT = 260
 TIMELINE_FRAME_COUNT = 8
+TIMELINE_TAIL_MARGIN_SEC = 0.5
 
 
 Color = tuple[int, int, int]
@@ -524,8 +525,12 @@ def _timeline_sample_points(duration_sec: float) -> list[float]:
         return [0.0]
     if TIMELINE_FRAME_COUNT == 1:
         return [_clamp_time(duration_sec / 2, duration_sec)]
+    sample_end = max(0.0, duration_sec - TIMELINE_TAIL_MARGIN_SEC)
     return [
-        _clamp_time(duration_sec * index / (TIMELINE_FRAME_COUNT - 1), duration_sec)
+        min(
+            sample_end,
+            max(0.0, duration_sec * index / (TIMELINE_FRAME_COUNT - 1)),
+        )
         for index in range(TIMELINE_FRAME_COUNT)
     ]
 

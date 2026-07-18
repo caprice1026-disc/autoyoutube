@@ -21,6 +21,9 @@ YouTube Shorts向けの雑学ショート動画を、ローカル環境で半自
 - 同一render内で同じPexels/登録映像素材を再利用しない素材選定
 - `make-video` による素材取得、render、inspect、evaluate、自動改善attemptの一括実行
 - `repair_log.json` / `failure_log.json` / `visual_assignment.json` による改善履歴と素材割り当て記録
+- `make-video` の実音声（AivisSpeech）＋FFmpegによる既定レンダリング
+- 結論先出しShorts向けの字幕上限（1行24文字・最大2行）とBGM音量上限（-22 dB）
+- `upload-youtube` による非公開アップロードと `rendered.youtube.json` への動画ID・URL・時刻記録
 - FFmpegによる 1080x1920 / H.264 / AAC のMP4生成
 - `YYYYMMDDHHMM-タイトル` 形式のrenderディレクトリ出力
 - YouTube Data APIへのprivate upload CLI
@@ -32,7 +35,7 @@ YouTube Shorts向けの雑学ショート動画を、ローカル環境で半自
 
 - thumbnail.jpg生成
 - YouTube private upload後にYouTube上で最終レビューする運用
-- thumbnail upload / upload status確認 / Analytics連携
+- thumbnail upload
 
 ## セットアップ
 
@@ -70,10 +73,10 @@ Windowsで `permission denied while trying to connect to the docker API at npipe
 .\.venv\Scripts\python.exe -m src.main render projects\trivia_submarine_black_001\project.youtube.json --video-mode ffmpeg --ffmpeg-path "C:\path\to\ffmpeg.exe"
 .\.venv\Scripts\python.exe -m src.main make-video projects\example_project.youtube.json --plan-only
 .\scripts\make-video.ps1 -ProjectPath "projects\example_project.youtube.json"
-.\.venv\Scripts\python.exe -m src.main validate-render renders\YYYYMMDDHHMM-タイトル\rendered.youtube.json
-.\.venv\Scripts\python.exe -m src.main evaluate-render renders\YYYYMMDDHHMM-タイトル\rendered.youtube.json
+.\.venv\Scripts\python.exe -m src.main validate-render renders\YYYYMMDDHHMM-タイトル\final\rendered.youtube.json
+.\.venv\Scripts\python.exe -m src.main evaluate-render renders\YYYYMMDDHHMM-タイトル\final\rendered.youtube.json
 .\.venv\Scripts\python.exe -m src.main youtube-auth
-.\.venv\Scripts\python.exe -m src.main upload-youtube renders\YYYYMMDDHHMM-タイトル\rendered.youtube.json
+.\.venv\Scripts\python.exe -m src.main upload-youtube renders\YYYYMMDDHHMM-タイトル\final\rendered.youtube.json
 ```
 
 AivisSpeechを使う場合:
@@ -97,9 +100,9 @@ $env:AIVIS_SPEECH_BASE_URL = "http://127.0.0.1:10101"
 
 ## make-video 一括生成
 
-`make-video` は、ローカルに置いた `project.youtube.json` から、Pexels素材取得、動画生成、inspect、quality評価、自動改善attemptまでをまとめて実行します。通常はYouTubeへ投稿せず、必要なときだけ `--upload-youtube` で private upload まで続けます。
+`make-video` は、ローカルに置いた `project.youtube.json` から、Pexels素材取得、AivisSpeech音声、FFmpeg動画生成、inspect、quality評価、自動改善attemptまでをまとめて実行します。通常はYouTubeへ投稿せず、品質確認後に standalone の `upload-youtube` を使って非公開投稿します。
 
-`--upload-youtube` を付けると、render が `success` または `success_with_warnings` のときに final の `rendered.youtube.json` を使って private upload まで続けます。警告付き成功でも投稿して問題ありません。
+`--upload-youtube` は互換用に残っていますが、警告付き成功を品質確認なしで投稿できるため、通常運用では使用しません。`quality_report.json` と `rendered.validation` を確認してから standalone の `upload-youtube` を実行してください。
 
 入力JSONは `projects/` 配下に置きます。記入例として [projects/example_project.youtube.json](projects/example_project.youtube.json) を用意しています。このファイルをコピーして、`id`、`topic`、`title`、`hook`、`script[]`、`script[].visual_query`、`youtube` を差し替えるのが基本です。
 
@@ -140,7 +143,7 @@ JSON内の `script[].visual_query` より、コマンド引数のキーワード
 
 `--video-keyword` / `--pexels-keyword` は複数指定できます。`--query-mode append` はJSON内の検索語に追加、`override` は引数のキーワードだけを検索・割り当てに使用、`fallback` はJSON内の検索語を優先しつつ不足時候補として引数キーワードを追加します。
 
-`--upload-youtube` を付けた場合は、render が `success` または `success_with_warnings` のときに private upload まで進みます。dry-run と `--video-mode dry-run` では upload しません。
+`--upload-youtube` を付けた場合でも、dry-run と `--video-mode dry-run` では upload しません。明示的な投稿は品質ゲート後に次の standalone コマンドで行います。
 
 出力は `renders/YYYYMMDDHHMM-タイトル/` に作られます。
 
@@ -155,7 +158,7 @@ failure_log.json
 visual_assignment.json
 ```
 
-`make-video` は元の `project.youtube.json` を直接書き換えません。Pexels素材の重複利用や低解像度素材が見つかった場合は、問題の `asset_id` をそのrun内で除外し、候補数を増やして再attemptします。`VIDEO_DURATION_TOO_LONG` は既定ではwarning扱いです。過去の手動改善と同様に読み上げ速度・文間を詰める自動調整は、`config/auto_repair.youtube_shorts.json` の `duration.auto_increase_speed_for_duration` を `true` にした場合だけ行います。
+`make-video` は元の `project.youtube.json` を直接書き換えません。Pexels素材の重複利用や低解像度素材が見つかった場合は、問題の `asset_id` をそのrun内で除外し、候補数を増やして再attemptします。`VIDEO_DURATION_TOO_LONG`、`SAME_ASSET_CONSECUTIVE`、`SAME_ASSET_REUSED`、`SAME_SOURCE_REUSED` は投稿前に停止すべきチェックです。
 
 `--bgm-id` を指定しない場合は、これまでのデフォルトBGM選定を使います。標準manifestでは `No One Here Gets In Alive - National Sweetheart` が選ばれる想定です。明示する場合は次のように指定します。
 
@@ -275,14 +278,16 @@ download先は `assets/pexels/` です。`fetch-visuals` は `assets/pexels/<pro
 
 ## YouTube private upload
 
-YouTubeアップロードは `private` のみ対応します。`public` / `unlisted` はCLIで受け付けません。アップロード前に、`output.mp4`、`description.txt`、`credits.txt`、`quality_report.json` が存在し、`quality_report.json` の `summary.error_count` が0である必要があります。
+YouTubeアップロードは `private` のみ対応します。`public` / `unlisted` はCLIで受け付けません。アップロード前に、`output.mp4`、`description.txt`、`credits.txt`、`quality_report.json` が存在し、`quality_report.json` の `summary.error_count` が0であること、上記の重複・尺ブロックがないこと、`rendered.validation.errors` が空であることを確認します。
 
 OAuthクライアントシークレットは `secrets/client_secret.json` に置きます。取得したトークンは `data/youtube_token.json` に保存され、どちらもGit管理しません。
 
 ```powershell
 .\.venv\Scripts\python.exe -m src.main youtube-auth
-.\.venv\Scripts\python.exe -m src.main upload-youtube renders\YYYYMMDDHHMM-タイトル\rendered.youtube.json
+.\.venv\Scripts\python.exe -m src.main upload-youtube renders\YYYYMMDDHHMM-タイトル\final\rendered.youtube.json
 ```
+
+成功すると `youtube.upload.status` が `uploaded_private` になり、`youtube_video_id`、`youtube_url`、`uploaded_at` が同じJSONへ保存されます。
 
 ## Docker / AivisSpeech Engine
 
@@ -329,17 +334,17 @@ AivisSpeech Engineのモデルやログは `data/aivis-engine/` に保存され�
 
 ## 品質検査
 
-`evaluate-render` は、生成済みの `rendered.youtube.json` と実ファイルを検査し、同じrenderディレクトリに `quality_report.json` を出力します。初期チェックでは、必須ファイル欠落、空のoutput.mp4、BGM credit漏れ、Pexels credit漏れ、字幕長、字幕表示時間、BGM音量、素材解像度、同一素材の連続利用、同一render内での同一 `asset_id` 再利用を見ます。公開可否のレビューは、`upload-youtube` で private 投稿した後にYouTube上で行う前提です。
+`evaluate-render` は、生成済みの `rendered.youtube.json` と実ファイルを検査し、attemptディレクトリに `quality_report.json` を出力します。必須ファイル、音声・映像尺、字幕長・表示時間、BGM音量、素材解像度、credit、同一素材の再利用などを確認します。なお、`rendered.validation` の全項目は evaluator が代行しないため、`rendered.validation.errors` と `rendered.validation.rendered_json_valid` も手動確認します。公開可否は非公開投稿後にYouTube上で最終レビューします。
 
 ```powershell
-.\.venv\Scripts\python.exe -m src.main evaluate-render renders\YYYYMMDDHHMM-タイトル\rendered.youtube.json
-Get-Content renders\YYYYMMDDHHMM-タイトル\quality_report.json
+.\.venv\Scripts\python.exe -m src.main evaluate-render renders\YYYYMMDDHHMM-タイトル\final\rendered.youtube.json
+Get-Content renders\YYYYMMDDHHMM-タイトル\attempts\attempt_001\quality_report.json
 ```
 
 同じ素材が一つの動画内で再利用されていないかを直接見る場合:
 
 ```powershell
-$rendered = Get-Content renders\YYYYMMDDHHMM-タイトル\rendered.youtube.json -Raw | ConvertFrom-Json
+$rendered = Get-Content renders\YYYYMMDDHHMM-タイトル\final\rendered.youtube.json -Raw | ConvertFrom-Json
 $rendered.visuals | Where-Object asset_id | Group-Object asset_id | Where-Object Count -gt 1
 ```
 
@@ -356,9 +361,9 @@ $rendered.visuals | Where-Object asset_id | Group-Object asset_id | Where-Object
 現在のテストは、JSON検証、CLIエラー表示、AivisSpeechクライアント、音声結合、BGM登録/選定、ローカル映像素材登録/選定、Pexels APIクライアント、Docker Compose設定、FFmpegコマンド生成、複数映像素材タイムライン、レンダーパイプライン、DB保存、quality evaluator、YouTube upload metadata/uploaderを対象にしています。
 ## 補足
 
-- `projects/` 配下の `project.youtube.json` は、SQLite DB の内容を正として再同期する前提です。
-- `commands/upload_commands.txt` は、現在の DB 状態に合わせた一時的なバッチ入力です。
-- `AivisSpeech/` はローカル実行用の生成物なので、Git 管理対象外です。
+- `projects/` 配下の `project.youtube.json` が生成の入力で、SQLite は素材・履歴のキャッシュです。
+- `commands/upload_commands.txt` は過去の一括実行用の一時入力です。現在は `make-video` と品質ゲート後の standalone `upload-youtube` を推奨します。
+- `AivisSpeech-Engine/` はローカル実行用のclone、`data/aivis-engine/` はモデル・ログのキャッシュで、どちらもGit管理対象外です。
 
 ### YouTube Analytics summary
 

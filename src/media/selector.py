@@ -35,6 +35,7 @@ def select_media_asset(
         matches,
         key=lambda asset: (
             source_priority.index(asset.source),
+            -_query_match_score(visual_query, asset),
             0 if asset.orientation == "portrait" else 1,
             asset.used_count,
             asset.asset_id,
@@ -43,9 +44,13 @@ def select_media_asset(
 
 
 def _matches_query(visual_query: str, asset: MediaAsset) -> bool:
+    return _query_match_score(visual_query, asset) > 0
+
+
+def _query_match_score(visual_query: str, asset: MediaAsset) -> int:
     haystack = " ".join([asset.query, *asset.tags]).lower()
     tokens = [token for token in visual_query.split() if token]
-    return bool(tokens) and any(token in haystack for token in tokens)
+    return sum(1 for token in tokens if token in haystack)
 
 
 def _has_avoid_keyword(asset: MediaAsset, avoid_keywords: set[str]) -> bool:

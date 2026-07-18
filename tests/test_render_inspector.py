@@ -153,3 +153,12 @@ def test_evaluate_render_includes_existing_inspect_artifacts(tmp_path: Path) -> 
     assert len(report["artifacts"]["screenshot_paths"]) == 3
     assert len(report["artifacts"]["subtitle_frame_paths"]) == 1
     assert report["artifacts"]["timeline_png_path"].endswith("timeline.png")
+
+
+def test_timeline_sample_points_leave_margin_before_video_end() -> None:
+    from src.quality.inspector import _timeline_sample_points
+
+    duration_sec = 33.166
+    points = _timeline_sample_points(duration_sec)
+
+    assert points[-1] <= duration_sec - 0.5
