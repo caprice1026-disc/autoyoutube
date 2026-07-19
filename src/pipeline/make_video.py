@@ -16,6 +16,7 @@ from src.config import PROJECT_SCHEMA_PATH, RENDERS_DIR
 from src.db.database import connect, init_db
 from src.db.repositories import upsert_media_assets
 from src.errors import AppError
+from src.media.gemini_keyword_extractor import extract_keywords_for_project
 from src.media.pexels_client import PexelsClient
 from src.media.visual_fetcher import fetch_visuals_for_project
 from src.pipeline.render_project import _render_dir_name, render_project
@@ -101,6 +102,17 @@ def make_video(options: MakeVideoOptions) -> MakeVideoResult:
     final_rendered_path: Path | None = None
     current_project = _project_with_bgm_override(project, options.bgm_id)
     current_project = _project_with_visual_keywords(current_project, options)
+    if options.dry_run:
+        keyword_extraction = {
+            "enabled": False,
+            "status": "disabled",
+            "reason": "dry_run",
+            "scene_plans": {},
+        }
+    else:
+        keyword_result = extract_keywords_for_project(current_project)
+        current_project = keyword_result.project
+        keyword_extraction = keyword_result.metadata
     rejected_asset_ids: set[str] = set()
     rejected_source_keys: set[str] = set()
     per_query = options.per_query or _config_int(
@@ -137,6 +149,7 @@ def make_video(options: MakeVideoOptions) -> MakeVideoResult:
                             if options.query_mode == "override"
                             else options.visual_keywords
                         ),
+                        keyword_extraction_metadata=keyword_extraction,
                     )
                     duplicates = _duplicate_selected_assets(visual_plan)
                     if duplicates:
@@ -280,6 +293,7 @@ def make_video(options: MakeVideoOptions) -> MakeVideoResult:
         query_mode=options.query_mode,
         rejected_asset_ids=rejected_asset_ids,
         rejected_source_keys=rejected_source_keys,
+        keyword_extraction=keyword_extraction,
     )
     _write_json(run_dir / "repair_log.json", repair_log)
     _write_json(run_dir / "failure_log.json", failure_log)
@@ -423,6 +437,7 @@ def _fetch_visuals(
     orientation: str,
     size: str,
     additional_queries: list[str] | None = None,
+    keyword_extraction_metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     result = fetch_visuals_for_project(
         project_path,
@@ -433,6 +448,8 @@ def _fetch_visuals(
         orientation=orientation,
         size=size,
         additional_queries=additional_queries,
+        enable_keyword_extraction=False,
+        keyword_extraction_metadata=keyword_extraction_metadata,
     )
     with connect() as connection:
         upsert_media_assets(connection, result.assets)
@@ -620,15 +637,20 @@ def _write_visual_assignment(
     query_mode: str,
     rejected_asset_ids: set[str],
     rejected_source_keys: set[str],
+    keyword_extraction: dict[str, Any],
 ) -> None:
     assignments: list[dict[str, Any]] = []
     if rendered_path.is_file():
         rendered = load_json(rendered_path)
         for visual in rendered.get("visuals", []):
             visual_source_key = _visual_source_key(visual)
+            script_index = visual.get("script_index") or visual.get("index")
+            scene_plan = keyword_extraction.get("scene_plans", {}).get(
+                str(script_index)
+            )
             assignments.append(
                 {
-                    "script_index": visual.get("script_index") or visual.get("index"),
+                    "script_index": script_index,
                     "visual_query": visual.get("visual_query"),
                     "asset_id": visual.get("asset_id"),
                     "source_key": visual_source_key,
@@ -641,6 +663,7 @@ def _write_visual_assignment(
                     "fallback_used": not bool(visual.get("asset_id")),
                     "rejected": visual.get("asset_id") in rejected_asset_ids
                     or visual_source_key in rejected_source_keys,
+                    "keyword_plan": scene_plan,
                 }
             )
     _write_json(
@@ -649,6 +672,7 @@ def _write_visual_assignment(
             "schema_version": "visual-assignment-1.0.0",
             "seed": seed,
             "query_mode": query_mode,
+            "keyword_extraction": keyword_extraction,
             "assignments": assignments,
         },
     )
