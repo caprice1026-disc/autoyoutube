@@ -261,6 +261,19 @@ sample projectでは `bgm.allow_sources` を `["youtube_audio_library"]` にし�
 
 Pexels APIキーは `.env` に `PEXELS_API_KEY=...` として設定します。`.env` はGit管理しません。
 
+### 任意: Geminiによる映像検索語の補強
+
+Geminiを有効にすると、プロジェクトごとに1回だけ `script[].text` を送り、各カットの具体的な英語検索語、視覚意図、避ける素材の語を生成します。Pexelsへの検索には生成された具体語を使い、`assets/pexels/<project_id>.visual_plan.json` と `visual_assignment.json` に生成結果を記録します。
+
+```dotenv
+ENABLE_LLM_KEYWORD_EXTRACTION=true
+GEMINI_API_KEY=your_api_key
+# 任意。未指定時は gemini-2.0-flash
+GEMINI_MODEL=gemini-2.0-flash
+```
+
+`GEMINI_API_KEY` が未設定の場合、API通信・レート制限・壊れたJSON応答などの失敗時は、生成語を使わず従来の `visual_strategy` と `script[].visual_query` のまま検索・動画制作を続行します。Geminiの応答キャッシュは `data/llm_keyword_cache.json` に保存され、Git管理しません。
+
 疎通確認:
 
 ```powershell

@@ -4,7 +4,11 @@ import json
 from pathlib import Path
 
 from src.media.pexels_client import PexelsClient
-from src.media.visual_fetcher import fetch_visuals_for_project, score_asset, visual_query_specs
+from src.media.visual_fetcher import (
+    fetch_visuals_for_project,
+    score_asset,
+    visual_query_specs,
+)
 
 
 class FakeTransport:
@@ -116,7 +120,9 @@ def test_visual_query_specs_deduplicate_and_preserve_script_context() -> None:
 
 def test_fetch_visuals_for_project_writes_scored_visual_plan(tmp_path: Path) -> None:
     project_path = tmp_path / "project.youtube.json"
-    project_path.write_text(json.dumps(_project(), ensure_ascii=False), encoding="utf-8")
+    project_path.write_text(
+        json.dumps(_project(), ensure_ascii=False), encoding="utf-8"
+    )
     transport = FakeTransport()
     client = PexelsClient(api_key="test-key", transport=transport)
 
@@ -130,13 +136,17 @@ def test_fetch_visuals_for_project_writes_scored_visual_plan(tmp_path: Path) -> 
         size="small",
     )
 
-    assert result.plan_path == tmp_path / "pexels" / "trivia_deep_sea_001.visual_plan.json"
+    assert (
+        result.plan_path == tmp_path / "pexels" / "trivia_deep_sea_001.visual_plan.json"
+    )
     assert result.plan_path.is_file()
     assert len(result.assets) == 2
     assert len(transport.downloads) == 2
     plan = json.loads(result.plan_path.read_text(encoding="utf-8"))
     assert plan["schema_version"] == "visual-plan-1.0.0"
     assert plan["project_id"] == "trivia_deep_sea_001"
+    assert plan["keyword_extraction"]["status"] == "disabled"
+    assert plan["keyword_extraction"]["scene_plans"] == {}
     assert plan["summary"]["query_count"] == 2
     assert plan["summary"]["downloaded_asset_count"] == 2
     first_query = plan["queries"][0]
@@ -147,7 +157,9 @@ def test_fetch_visuals_for_project_writes_scored_visual_plan(tmp_path: Path) -> 
     assert "orientation matches portrait" in first_query["candidates"][0]["reasons"]
 
 
-def test_fetch_assets_for_queries_deduplicates_same_pexels_source(tmp_path: Path) -> None:
+def test_fetch_assets_for_queries_deduplicates_same_pexels_source(
+    tmp_path: Path,
+) -> None:
     class DuplicateTransport:
         def __init__(self) -> None:
             self.downloads: list[tuple[str, Path]] = []

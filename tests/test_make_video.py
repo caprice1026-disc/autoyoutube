@@ -211,10 +211,96 @@ def test_make_video_dry_run_writes_attempt_final_and_logs(
         (run_dir / "visual_assignment.json").read_text(encoding="utf-8")
     )
     assert visual_assignment["seed"] == 123
+    assert visual_assignment["keyword_extraction"]["status"] == "disabled"
     assert visual_assignment["assignments"]
     captured = capsys.readouterr()
     assert "[make-video] attempt 1 started" in captured.out
     assert "[make-video] final adopted from attempt 1" in captured.out
+
+
+def test_make_video_records_generated_keyword_plan_with_selected_visual(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project_path = _write_project(tmp_path)
+    enhanced = _project()
+    enhanced["script"][0]["visual_query"] = "silicon wafer clean room"
+    metadata = {
+        "enabled": True,
+        "status": "generated",
+        "model": "gemini-test",
+        "scene_plans": {
+            "1": {
+                "primary_keywords": ["silicon wafer"],
+                "secondary_keywords": ["clean room"],
+                "visual_intent": "silicon wafer close-up",
+                "avoid_keywords": ["brand logo"],
+                "search_query": "silicon wafer clean room",
+            }
+        },
+    }
+    monkeypatch.setattr(make_video_module, "RENDERS_DIR", tmp_path / "renders")
+    monkeypatch.setattr(make_video_module, "init_db", lambda: None)
+    monkeypatch.setattr(
+        make_video_module,
+        "extract_keywords_for_project",
+        lambda project: SimpleNamespace(project=enhanced, metadata=metadata),
+    )
+    monkeypatch.setattr(make_video_module, "_fetch_visuals", lambda *args, **kwargs: {})
+    monkeypatch.setattr(make_video_module, "_inspect_attempt", lambda *args: None)
+    monkeypatch.setattr(
+        make_video_module,
+        "evaluate_render",
+        lambda rendered_path: {
+            "summary": {"status": "pass", "error_count": 0, "warning_count": 0},
+            "checks": [],
+        },
+    )
+
+    def fake_render_attempt(
+        options: MakeVideoOptions,
+        project_path: Path,
+        attempt_dir: Path,
+        rejected_asset_ids: set[str],
+        rejected_source_keys: set[str],
+    ) -> Path:
+        attempt_dir.mkdir(parents=True, exist_ok=True)
+        path = attempt_dir / "rendered.youtube.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "visuals": [
+                        {
+                            "script_index": 1,
+                            "visual_query": "silicon wafer clean room",
+                            "asset_id": "pexels_1",
+                            "source": "pexels",
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        return path
+
+    monkeypatch.setattr(make_video_module, "_render_attempt", fake_render_attempt)
+
+    result = make_video(
+        MakeVideoOptions(
+            project_path=project_path,
+            voice_mode="dry-run",
+            video_mode="dry-run",
+            max_fix_attempts=1,
+            skip_inspect=True,
+        )
+    )
+
+    assignment = json.loads(
+        (result.run_dir / "visual_assignment.json").read_text(encoding="utf-8")
+    )
+    assert assignment["keyword_extraction"]["status"] == "generated"
+    assert assignment["assignments"][0]["keyword_plan"]["visual_intent"] == (
+        "silicon wafer close-up"
+    )
 
 
 def test_make_video_max_attempts_env_overrides_config(
@@ -257,6 +343,7 @@ def test_make_video_retries_visual_quality_issue_with_rejected_asset(
         orientation: str,
         size: str,
         additional_queries: list[str] | None = None,
+        keyword_extraction_metadata: dict[str, Any] | None = None,
     ) -> None:
         fetch_calls.append((per_query, max_downloads))
 
@@ -267,9 +354,7 @@ def test_make_video_retries_visual_quality_issue_with_rejected_asset(
         rejected_asset_ids: set[str],
         rejected_source_keys: set[str],
     ) -> Path:
-        render_rejections.append(
-            (set(rejected_asset_ids), set(rejected_source_keys))
-        )
+        render_rejections.append((set(rejected_asset_ids), set(rejected_source_keys)))
         attempt_dir.mkdir(parents=True, exist_ok=True)
         rendered_path = attempt_dir / "rendered.youtube.json"
         rendered_path.write_text(json.dumps({"visuals": []}), encoding="utf-8")
@@ -443,6 +528,7 @@ def test_make_video_uses_cli_visual_keywords_for_actual_pexels_query_project(
         orientation: str,
         size: str,
         additional_queries: list[str] | None = None,
+        keyword_extraction_metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         fetch_projects.append(json.loads(project_path.read_text(encoding="utf-8")))
         return {}
@@ -518,6 +604,7 @@ def test_make_video_caps_saved_fallback_queries_while_forwarding_all_cli_keyword
         orientation: str,
         size: str,
         additional_queries: list[str] | None = None,
+        keyword_extraction_metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         fetch_projects.append(json.loads(project_path.read_text(encoding="utf-8")))
         fetch_additional_queries.append(additional_queries)

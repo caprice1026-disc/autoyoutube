@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from src.errors import AppError
+from src.media.gemini_keyword_extractor import extract_keywords_for_project
 from src.media.library import MediaAsset
 from src.media.pexels_client import PexelsClient
 from src.validators.json_validator import load_json
@@ -24,6 +25,7 @@ class VisualFetchResult:
     assets: list[MediaAsset]
     plan: dict[str, Any]
     plan_path: Path
+    keyword_extraction: dict[str, Any]
 
 
 def fetch_visuals_for_project(
@@ -37,8 +39,21 @@ def fetch_visuals_for_project(
     size: str | None = "small",
     plan_path: Path | None = None,
     additional_queries: list[str] | None = None,
+    enable_keyword_extraction: bool = True,
+    keyword_extraction_metadata: dict[str, Any] | None = None,
 ) -> VisualFetchResult:
     project = load_json(project_path)
+    if enable_keyword_extraction:
+        keyword_result = extract_keywords_for_project(project)
+        project = keyword_result.project
+        keyword_extraction = keyword_result.metadata
+    else:
+        keyword_extraction = keyword_extraction_metadata or {
+            "enabled": False,
+            "status": "disabled",
+            "reason": "handled_upstream",
+            "scene_plans": {},
+        }
     specs = visual_query_specs(project)
     if additional_queries:
         extra_specs = [
@@ -80,12 +95,18 @@ def fetch_visuals_for_project(
         max_downloads=max_downloads,
         orientation=orientation,
         size=size,
+        keyword_extraction=keyword_extraction,
     )
     plan_path.write_text(
         json.dumps(plan, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    return VisualFetchResult(assets=assets, plan=plan, plan_path=plan_path)
+    return VisualFetchResult(
+        assets=assets,
+        plan=plan,
+        plan_path=plan_path,
+        keyword_extraction=keyword_extraction,
+    )
 
 
 def visual_query_specs(project: dict[str, Any]) -> list[VisualQuerySpec]:
@@ -155,6 +176,7 @@ def build_visual_plan(
     max_downloads: int | None,
     orientation: str | None,
     size: str | None,
+    keyword_extraction: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     by_query: dict[str, list[MediaAsset]] = {}
     for asset in assets:
@@ -191,6 +213,8 @@ def build_visual_plan(
             "orientation": orientation,
             "size": size,
         },
+        "keyword_extraction": keyword_extraction
+        or {"enabled": False, "status": "disabled", "scene_plans": {}},
         "summary": {
             "query_count": len(query_plans),
             "downloaded_asset_count": len(assets),
