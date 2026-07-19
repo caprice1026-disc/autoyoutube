@@ -12,7 +12,7 @@
 - [x] `fetch-visuals` と `make-video` に一度だけキーワード抽出を統合した。
 - [x] 視覚検索計画と選択結果にキーワード根拠を記録した。
 - [x] 設定例、README、テストを追加・更新した。
-- [x] Ruff と pytest を実行し、実装をコミットした。push と PR 作成を行う。
+- [x] Ruff と pytest を実行し、実装をコミット・push した。PR #14 を `master` 宛てに作成した。
 
 ## 現状と設計判断
 
