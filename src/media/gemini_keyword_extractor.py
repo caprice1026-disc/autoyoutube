@@ -16,7 +16,7 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 
-DEFAULT_GEMINI_MODEL = "gemini-2.0-flash"
+DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite"
 PROMPT_VERSION = "visual-keyword-extraction-v1"
 DEFAULT_CACHE_PATH = Path("data/llm_keyword_cache.json")
 _MAX_FALLBACK_QUERIES = 8
@@ -163,19 +163,28 @@ def _project_scenes(project: Mapping[str, Any]) -> list[dict[str, Any]]:
         index = item.get("index")
         text = item.get("text")
         if isinstance(index, int) and isinstance(text, str) and text.strip():
-            scenes.append({"index": index, "text": text.strip()})
+            scenes.append(
+                {
+                    "index": index,
+                    "text": text.strip(),
+                    "anchor_query": _phrase(item.get("visual_query")),
+                }
+            )
     return scenes
 
 
 def _request_payload(scenes: list[dict[str, Any]]) -> dict[str, Any]:
     scene_lines = "\n".join(
-        f"- index: {scene['index']}; narration: {scene['text']}" for scene in scenes
+        "- index: "
+        f"{scene['index']}; narration: {scene['text']}; "
+        f"existing visual query: {scene['anchor_query'] or '(none)'}"
+        for scene in scenes
     )
     prompt = f"""You create concise English search terms for stock-video selection.
 Return JSON only, with this exact top-level shape:
 {{"scenes":[{{"index":1,"primary_keywords":["..."],"secondary_keywords":["..."],"visual_intent":"...","avoid_keywords":["..."]}}]}}
 
-For every input scene, provide concrete, visual English terms. primary_keywords must name the main visible subject or action. secondary_keywords may add setting or motion. visual_intent must describe a specific footage shot and must replace abstract terms such as technology, history, economy, or politics when those are not directly filmable. avoid_keywords lists misleading footage to exclude. Do not include brand names. Translate Japanese narration to English. Keep every array to at most {_MAX_KEYWORDS} short phrases.
+For every input scene, provide concrete, visual English terms. primary_keywords must name the main visible subject or action. secondary_keywords may add setting or motion. visual_intent must describe a specific footage shot and must replace abstract terms such as technology, history, economy, or politics when those are not directly filmable. The existing visual query is a semantic anchor: when it contains a concrete noun, generated terms must preserve that noun or a direct phrase containing it. Do not substitute a different subject. avoid_keywords lists misleading footage to exclude. Do not include brand names. Translate Japanese narration to English. Keep every array to at most {_MAX_KEYWORDS} short phrases.
 
 Scenes:
 {scene_lines}
@@ -208,10 +217,15 @@ def _parse_response(
         raise ValueError("invalid_response")
 
     expected_indices = {scene["index"] for scene in scenes}
+    anchors = {scene["index"]: scene.get("anchor_query", "") for scene in scenes}
     normalized: dict[str, dict[str, Any]] = {}
     for raw in raw_scenes:
         plan = _normalize_scene_plan(raw)
-        if plan is not None and plan["index"] in expected_indices:
+        if (
+            plan is not None
+            and plan["index"] in expected_indices
+            and _is_relevant_to_anchor(plan, anchors[plan["index"]])
+        ):
             normalized[str(plan["index"])] = plan
     if set(int(index) for index in normalized) != expected_indices:
         raise ValueError("invalid_response")
@@ -246,6 +260,36 @@ def _normalize_scene_plan(raw: Any) -> dict[str, Any] | None:
         "secondary_keywords": secondary,
         "visual_intent": visual_intent,
         "avoid_keywords": avoid,
+    }
+
+
+def _is_relevant_to_anchor(plan: Mapping[str, Any], anchor_query: str) -> bool:
+    anchor_terms = _significant_terms(anchor_query)
+    if not anchor_terms:
+        return True
+    generated_text = " ".join(
+        [
+            *[
+                item
+                for item in plan.get("primary_keywords", [])
+                if isinstance(item, str)
+            ],
+            *[
+                item
+                for item in plan.get("secondary_keywords", [])
+                if isinstance(item, str)
+            ],
+            str(plan.get("visual_intent") or ""),
+        ]
+    )
+    return bool(anchor_terms & _significant_terms(generated_text))
+
+
+def _significant_terms(value: str) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", value.lower())
+        if len(token) >= 3 and token not in _GENERIC_KEYWORDS
     }
 
 

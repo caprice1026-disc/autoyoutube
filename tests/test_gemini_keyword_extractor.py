@@ -102,6 +102,50 @@ def test_extract_keywords_uses_original_project_when_gemini_is_unconfigured(
     assert result.metadata["reason"] == "missing_api_key"
 
 
+def test_extract_keywords_defaults_to_flash_lite_for_free_tier_usage(tmp_path) -> None:
+    result = extract_keywords_for_project(
+        _project(),
+        environ={"ENABLE_LLM_KEYWORD_EXTRACTION": "true"},
+        cache_path=tmp_path / "cache.json",
+    )
+
+    assert result.metadata["model"] == "gemini-3.1-flash-lite"
+
+
+def test_extract_keywords_rejects_a_generated_plan_unrelated_to_visual_query(
+    tmp_path,
+) -> None:
+    project = _project()
+    project["script"][0]["visual_query"] = "microwave turntable"
+    transport = FakeGeminiTransport(
+        _gemini_response(
+            [
+                {
+                    "index": 1,
+                    "primary_keywords": ["dandelion seeds", "golden sunlight"],
+                    "secondary_keywords": ["grassy meadow"],
+                    "visual_intent": "dandelion seeds floating in a field",
+                    "avoid_keywords": [],
+                }
+            ]
+        )
+    )
+
+    result = extract_keywords_for_project(
+        project,
+        environ={
+            "ENABLE_LLM_KEYWORD_EXTRACTION": "true",
+            "GEMINI_API_KEY": "test-key",
+        },
+        cache_path=tmp_path / "cache.json",
+        transport=transport,
+    )
+
+    assert result.project == project
+    assert result.metadata["status"] == "fallback"
+    assert result.metadata["reason"] == "invalid_response"
+
+
 def test_extract_keywords_falls_back_when_gemini_returns_invalid_json(tmp_path) -> None:
     project = _project()
     transport = FakeGeminiTransport(
@@ -165,12 +209,14 @@ def test_extract_keywords_reuses_cached_scene_result_without_a_second_request(
         "GEMINI_API_KEY": "test-key",
     }
     cache_path = tmp_path / "cache.json"
+    project = _project()
+    project["script"][0]["visual_query"] = "silicon wafer factory"
 
     first = extract_keywords_for_project(
-        _project(), environ=environ, cache_path=cache_path, transport=transport
+        project, environ=environ, cache_path=cache_path, transport=transport
     )
     second = extract_keywords_for_project(
-        _project(), environ=environ, cache_path=cache_path, transport=transport
+        project, environ=environ, cache_path=cache_path, transport=transport
     )
 
     assert first.metadata["status"] == "generated"
@@ -195,8 +241,10 @@ def test_extract_keywords_uses_visual_intent_when_primary_keywords_are_abstract(
         )
     )
 
+    project = _project()
+    project["script"][0]["visual_query"] = "semiconductor factory"
     result = extract_keywords_for_project(
-        _project(),
+        project,
         environ={
             "ENABLE_LLM_KEYWORD_EXTRACTION": "true",
             "GEMINI_API_KEY": "test-key",

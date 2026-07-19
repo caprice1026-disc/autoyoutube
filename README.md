@@ -268,8 +268,8 @@ Geminiを有効にすると、プロジェクトごとに1回だけ `script[].te
 ```dotenv
 ENABLE_LLM_KEYWORD_EXTRACTION=true
 GEMINI_API_KEY=your_api_key
-# 任意。未指定時は gemini-2.0-flash
-GEMINI_MODEL=gemini-2.0-flash
+# 任意。未指定時は無料枠向けの gemini-3.1-flash-lite
+GEMINI_MODEL=gemini-3.1-flash-lite
 ```
 
 `GEMINI_API_KEY` が未設定の場合、API通信・レート制限・壊れたJSON応答などの失敗時は、生成語を使わず従来の `visual_strategy` と `script[].visual_query` のまま検索・動画制作を続行します。Geminiの応答キャッシュは `data/llm_keyword_cache.json` に保存され、Git管理しません。
