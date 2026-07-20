@@ -7,7 +7,9 @@ from typing import Any
 from src.db.database import init_db
 from src.db.repositories import (
     insert_render_summary,
+    upsert_render_quality_reports,
     upsert_project,
+    upsert_youtube_daily_metrics,
     upsert_youtube_metrics_snapshots,
     upsert_youtube_uploads,
 )
@@ -254,6 +256,58 @@ def test_insert_render_summary_allows_missing_manual_review(tmp_path: Path) -> N
     assert review_row is None
 
 
+def test_insert_render_summary_normalizes_subtitles_and_validation_messages(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "test.db"
+    init_db(db_path)
+    project = _project(style_id=888753760)
+    rendered = _rendered(project)
+    rendered["subtitles"] = {
+        "format": "ass",
+        "style": {
+            "font_name": "Arial",
+            "font_size": 72,
+            "primary_color": "FFFFFF",
+            "outline_color": "000000",
+            "outline": 5,
+            "shadow": 1,
+            "alignment": "bottom_center",
+            "margin_v": 220,
+        },
+        "items": [
+            {
+                "index": 1,
+                "text": "Hook",
+                "start_sec": 0.0,
+                "end_sec": 1.0,
+                "caption_style_hint": "question",
+            }
+        ],
+    }
+    rendered["validation"] = {
+        "project_json_valid": True,
+        "rendered_json_valid": True,
+        "warnings": [{"code": "WARN", "message": "check"}],
+        "errors": [],
+    }
+    with sqlite3.connect(db_path) as connection:
+        upsert_project(connection, project, "projects/sample/project.youtube.json", "hash")
+        insert_render_summary(connection, rendered)
+        style_count = connection.execute(
+            "SELECT COUNT(*) FROM render_subtitle_styles"
+        ).fetchone()[0]
+        item_count = connection.execute(
+            "SELECT COUNT(*) FROM render_subtitle_items"
+        ).fetchone()[0]
+        message = connection.execute(
+            "SELECT code, level FROM render_validation_messages"
+        ).fetchone()
+    assert style_count == 1
+    assert item_count == 1
+    assert tuple(message) == ("WARN", "warning")
+
+
 def test_upsert_youtube_metrics_snapshots_updates_on_conflict(
     tmp_path: Path,
 ) -> None:
@@ -322,6 +376,80 @@ def test_upsert_youtube_metrics_snapshots_updates_on_conflict(
         "likes": 9,
         "raw_metrics_json": "{\"views\": 42}",
     }
+
+
+def test_upsert_youtube_daily_metrics_is_idempotent_and_updates_on_conflict(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "test.db"
+    init_db(db_path)
+    project = _project(style_id=888753760)
+    rendered = _rendered(project)
+    row = {
+        "render_id": rendered["render_id"],
+        "project_id": project["id"],
+        "youtube_video_id": "abc123",
+        "metric_date": "2026-07-08",
+        "report_kind": "daily_video",
+        "dimensions_json": '{"creatorContentType":"SHORTS"}',
+        "data_through_date": "2026-07-08",
+        "views": 10,
+        "likes": 2,
+        "raw_metrics_json": '{"views":10}',
+    }
+    with sqlite3.connect(db_path) as connection:
+        upsert_project(connection, project, "projects/sample/project.youtube.json", "hash")
+        insert_render_summary(connection, rendered)
+        upsert_youtube_daily_metrics(connection, [row, row])
+        updated = {**row, "views": 42, "raw_metrics_json": '{"views":42}'}
+        upsert_youtube_daily_metrics(connection, [updated])
+        stored = connection.execute(
+            "SELECT views, raw_metrics_json FROM youtube_daily_metrics"
+        ).fetchone()
+        count = connection.execute("SELECT COUNT(*) FROM youtube_daily_metrics").fetchone()[0]
+    assert count == 1
+    assert tuple(stored) == (42, '{"views":42}')
+
+
+def test_upsert_render_quality_reports_dedupes_same_hash(tmp_path: Path) -> None:
+    db_path = tmp_path / "test.db"
+    init_db(db_path)
+    project = _project(style_id=888753760)
+    rendered = _rendered(project)
+    report = {
+        "render_id": rendered["render_id"],
+        "report_hash": "sha256:" + "a" * 64,
+        "source_path": "renders/sample/final/quality_report.json",
+        "status": "warning",
+        "warning_count": 1,
+        "error_count": 0,
+        "info_count": 2,
+        "subtitle_count": 1,
+        "max_subtitle_chars": 24,
+        "max_subtitle_cps": 6.2,
+        "audio_rms_db": -20.0,
+        "audio_peak_db": -1.0,
+        "summary_json": '{"warning_count":1}',
+        "metrics_json": '{"final_audio_rms_dbfs":-20.0}',
+        "checks_json": "[]",
+        "raw_report_json": '{"status":"warning"}',
+    }
+    with sqlite3.connect(db_path) as connection:
+        upsert_project(connection, project, "projects/sample/project.youtube.json", "hash")
+        insert_render_summary(connection, rendered)
+        assert upsert_render_quality_reports(connection, [report]) == 1
+        assert upsert_render_quality_reports(connection, [report]) == 0
+        stored = connection.execute(
+            "SELECT render_id, report_hash, quality_report_hash, warning_count, info_count, metrics_json FROM render_quality_reports"
+        ).fetchone()
+    assert tuple(stored) == (
+        rendered["render_id"],
+        report["report_hash"],
+        report["report_hash"],
+        1,
+        2,
+        report["metrics_json"],
+    )
 
 
 def test_upsert_youtube_uploads_updates_on_conflict(tmp_path: Path) -> None:

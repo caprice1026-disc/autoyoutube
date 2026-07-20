@@ -25,6 +25,15 @@ def _ensure_lightweight_migrations(connection: sqlite3.Connection) -> None:
     _add_column_if_missing(
         connection, "render_voice_settings", "voice_style_id", "INTEGER"
     )
+    _add_column_if_missing(
+        connection, "render_quality_reports", "quality_report_hash", "TEXT"
+    )
+    _add_column_if_missing(connection, "render_quality_reports", "info_count", "INTEGER")
+    _add_column_if_missing(connection, "render_quality_reports", "metrics_json", "TEXT")
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_render_quality_reports_quality_hash "
+        "ON render_quality_reports(quality_report_hash)"
+    )
 
 
 def _add_column_if_missing(

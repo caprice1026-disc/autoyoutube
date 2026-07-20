@@ -1161,6 +1161,79 @@ ON youtube_metrics_snapshots(youtube_video_id, snapshot_date);
 
 
 -- ============================================================
+-- 20b. YouTube Analytics 日次動画指標
+-- 既存 snapshots は互換性のため変更せず、day APIの生データを保持する
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS youtube_daily_metrics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    render_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    youtube_video_id TEXT NOT NULL,
+    metric_date TEXT NOT NULL,
+    report_kind TEXT NOT NULL DEFAULT 'daily_video',
+    dimensions_json TEXT NOT NULL DEFAULT '{}',
+    data_through_date TEXT,
+    collected_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    views INTEGER,
+    engaged_views INTEGER,
+    likes INTEGER,
+    comments INTEGER,
+    shares INTEGER,
+    subscribers_gained INTEGER,
+    average_view_duration REAL,
+    average_view_percentage REAL,
+    estimated_minutes_watched REAL,
+    raw_metrics_json TEXT,
+
+    FOREIGN KEY (render_id) REFERENCES youtube_renders(render_id) ON DELETE CASCADE,
+    FOREIGN KEY (project_id) REFERENCES youtube_projects(id) ON DELETE CASCADE,
+    UNIQUE (youtube_video_id, metric_date, report_kind, dimensions_json)
+);
+
+CREATE INDEX IF NOT EXISTS idx_youtube_daily_metrics_video_date
+ON youtube_daily_metrics(youtube_video_id, metric_date);
+
+CREATE INDEX IF NOT EXISTS idx_youtube_daily_metrics_through_date
+ON youtube_daily_metrics(data_through_date);
+
+
+-- ============================================================
+-- 20c. render quality_report.json の正規化取り込み
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS render_quality_reports (
+    render_id TEXT PRIMARY KEY,
+    report_hash TEXT NOT NULL,
+    quality_report_hash TEXT,
+    source_path TEXT NOT NULL,
+    status TEXT,
+    warning_count INTEGER,
+    error_count INTEGER,
+    info_count INTEGER,
+    subtitle_count INTEGER,
+    max_subtitle_chars INTEGER,
+    max_subtitle_cps REAL,
+    audio_rms_db REAL,
+    audio_peak_db REAL,
+    summary_json TEXT,
+    metrics_json TEXT,
+    checks_json TEXT,
+    raw_report_json TEXT NOT NULL,
+    imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (render_id) REFERENCES youtube_renders(render_id) ON DELETE CASCADE,
+    UNIQUE (report_hash)
+);
+
+CREATE INDEX IF NOT EXISTS idx_render_quality_reports_hash
+ON render_quality_reports(report_hash);
+
+
+
+-- ============================================================
 -- 21. 便利ビュー
 -- レンダリング一覧をざっくり確認する用
 -- ============================================================

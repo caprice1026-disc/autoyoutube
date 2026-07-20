@@ -17,10 +17,13 @@ from urllib.request import Request, urlopen
 
 
 DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite"
-PROMPT_VERSION = "visual-keyword-extraction-v1"
+PROMPT_VERSION = "visual-keyword-extraction-v2"
 DEFAULT_CACHE_PATH = Path("data/llm_keyword_cache.json")
 _MAX_FALLBACK_QUERIES = 8
 _MAX_KEYWORDS = 8
+_MAX_VISUAL_QUERY_LENGTH = 80
+_MAX_AVOID_KEYWORDS = 20
+_MAX_AVOID_KEYWORD_LENGTH = 50
 _GENERIC_KEYWORDS = {
     "analysis",
     "business",
@@ -191,7 +194,46 @@ Scenes:
 """
     return {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"responseMimeType": "application/json"},
+        "generationConfig": {
+            "responseMimeType": "application/json",
+            "responseJsonSchema": _keyword_response_schema(len(scenes)),
+        },
+    }
+
+
+def _keyword_response_schema(scene_count: int) -> dict[str, Any]:
+    short_phrase_array = {
+        "type": "array",
+        "maxItems": _MAX_KEYWORDS,
+        "items": {"type": "string"},
+    }
+    return {
+        "type": "object",
+        "properties": {
+            "scenes": {
+                "type": "array",
+                "minItems": scene_count,
+                "maxItems": scene_count,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "index": {"type": "integer"},
+                        "primary_keywords": short_phrase_array,
+                        "secondary_keywords": short_phrase_array,
+                        "visual_intent": {"type": "string"},
+                        "avoid_keywords": short_phrase_array,
+                    },
+                    "required": [
+                        "index",
+                        "primary_keywords",
+                        "secondary_keywords",
+                        "visual_intent",
+                        "avoid_keywords",
+                    ],
+                },
+            }
+        },
+        "required": ["scenes"],
     }
 
 
@@ -334,7 +376,9 @@ def _apply_scene_plans(
         plan = scene_plans.get(key)
         if plan is None:
             continue
-        original_query = _phrase(script.get("visual_query"))
+        original_query = _clip_phrase(
+            script.get("visual_query"), _MAX_VISUAL_QUERY_LENGTH
+        )
         query = _compose_visual_query(plan)
         if not query:
             continue
@@ -344,8 +388,13 @@ def _apply_scene_plans(
         if original_query:
             fallbacks.append(original_query)
         if plan.get("visual_intent"):
-            fallbacks.append(plan["visual_intent"])
-        avoid_keywords.extend(plan.get("avoid_keywords", []))
+            fallbacks.append(
+                _clip_phrase(plan["visual_intent"], _MAX_VISUAL_QUERY_LENGTH)
+            )
+        avoid_keywords.extend(
+            _clip_phrase(item, _MAX_AVOID_KEYWORD_LENGTH)
+            for item in plan.get("avoid_keywords", [])
+        )
         normalized_plans[key] = {
             **dict(plan),
             "original_visual_query": original_query,
@@ -354,8 +403,12 @@ def _apply_scene_plans(
 
     if first_query:
         strategy["primary_query"] = first_query
-    strategy["fallback_queries"] = _unique_phrases(fallbacks, _MAX_FALLBACK_QUERIES)
-    strategy["avoid_keywords"] = _unique_phrases(avoid_keywords, _MAX_KEYWORDS * 3)
+    strategy["fallback_queries"] = _unique_phrases(
+        fallbacks, _MAX_FALLBACK_QUERIES, _MAX_VISUAL_QUERY_LENGTH
+    )
+    strategy["avoid_keywords"] = _unique_phrases(
+        avoid_keywords, _MAX_AVOID_KEYWORDS, _MAX_AVOID_KEYWORD_LENGTH
+    )
     return project, normalized_plans
 
 
@@ -372,19 +425,28 @@ def _compose_visual_query(plan: Mapping[str, Any]) -> str:
         phrase.lower() in _GENERIC_KEYWORDS for phrase in primary
     )
     if all_primary_generic and isinstance(plan.get("visual_intent"), str):
-        return plan["visual_intent"]
-    return " ".join(_unique_phrases(primary + secondary, _MAX_KEYWORDS))
+        return _clip_phrase(plan["visual_intent"], _MAX_VISUAL_QUERY_LENGTH)
+    return _clip_phrase(
+        " ".join(_unique_phrases(primary + secondary, _MAX_KEYWORDS)),
+        _MAX_VISUAL_QUERY_LENGTH,
+    )
 
 
-def _unique_phrases(values: list[str], limit: int) -> list[str]:
+def _unique_phrases(
+    values: list[str], limit: int, max_length: int = 120
+) -> list[str]:
     result: list[str] = []
     for value in values:
-        phrase = _phrase(value)
+        phrase = _clip_phrase(value, max_length)
         if phrase and phrase not in result:
             result.append(phrase)
         if len(result) >= limit:
             break
     return result
+
+
+def _clip_phrase(value: Any, max_length: int) -> str:
+    return _phrase(value)[:max_length].rstrip()
 
 
 def _cache_key(model: str, scenes: list[dict[str, Any]]) -> str:

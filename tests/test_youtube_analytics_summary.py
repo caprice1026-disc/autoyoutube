@@ -5,13 +5,21 @@ import sqlite3
 from datetime import date
 from pathlib import Path
 
-from src.db.database import init_db
-from src.db.repositories import insert_render_summary, upsert_project
+import src.youtube.analytics_summary as analytics_summary
+from src.db.database import connect, init_db
+from src.db.repositories import (
+    insert_render_summary,
+    upsert_project,
+    upsert_youtube_uploads,
+)
 from src.youtube.analytics_summary import (
     collect_uploaded_video_targets,
     YoutubeAnalyticsTarget,
     build_summary,
+    fetch_daily_video_metrics,
     fetch_video_metrics,
+    generate_youtube_analytics_summary,
+    sync_render_quality_reports,
     sync_youtube_uploads_from_rendered_files,
 )
 from tests.test_db_repositories import _project, _rendered
@@ -93,6 +101,30 @@ def test_fetch_video_metrics_parses_api_rows() -> None:
             "maxResults": 500,
         }
     ]
+
+
+def test_fetch_daily_video_metrics_parses_day_and_falls_back_without_shorts_filter() -> None:
+    payloads = {
+        ("video-a",): {
+            "columnHeaders": [
+                {"name": "day"},
+                {"name": "views"},
+                {"name": "averageViewPercentage"},
+            ],
+            "rows": [["2026-07-08", 50, 40.0], ["2026-07-09", 70, 60.0]],
+        }
+    }
+    service = FakeAnalyticsService(payloads)
+    rows = fetch_daily_video_metrics(
+        service,
+        ["video-a"],
+        start_date=date(2026, 7, 8),
+        end_date=date(2026, 7, 9),
+    )
+    assert rows[0]["metric_date"] == "2026-07-08"
+    assert rows[0]["data_through_date"] == "2026-07-09"
+    assert rows[0]["dimensions_json"] == "{}"
+    assert len(service.reports_resource.calls) == 2
 
 
 def test_build_summary_computes_totals_and_snapshot_rows() -> None:
@@ -177,6 +209,139 @@ def test_build_summary_computes_totals_and_snapshot_rows() -> None:
     ]
 
 
+def test_build_summary_adds_maturity_windows_and_v2_quality_fields() -> None:
+    target = YoutubeAnalyticsTarget(
+        render_id="render-1",
+        project_id="project-1",
+        topic="ocean",
+        internal_title="Internal",
+        youtube_title="Ocean",
+        youtube_video_id="video-a",
+        youtube_url=None,
+        uploaded_at="2026-07-08T00:00:00Z",
+        completed_at="2026-07-08T00:00:00Z",
+        experiment_group="group-a",
+        hypothesis="Hook improves retention.",
+        primary_metric="average_view_percentage",
+        secondary_metrics=[],
+        actual_duration_sec=42,
+    )
+    summary, _ = build_summary(
+        [target],
+        {"video-a": {"views": 100, "average_view_percentage": 50.0}},
+        start_date=date(2026, 7, 8),
+        end_date=date(2026, 7, 10),
+        daily_rows=[
+            {
+                "youtube_video_id": "video-a",
+                "metric_date": "2026-07-09",
+                "data_through_date": "2026-07-09",
+                "views": 100,
+                "average_view_percentage": 50.0,
+            }
+        ],
+        today_pt=date(2026, 7, 10),
+    )
+    assert summary["schema_version"] == "youtube-analytics-summary-2.0.0"
+    assert {
+        "query",
+        "data_coverage",
+        "maturity_windows",
+        "baselines",
+        "videos",
+        "experiments",
+        "observations",
+        "recommendations",
+        "data_quality",
+        "source_versions",
+        "facts",
+        "interpretations",
+        "proposals",
+    }.issubset(summary)
+    assert set(summary["maturity_windows"]) == {"D1", "D3", "D7", "D28"}
+    assert summary["videos"][0]["maturity_windows"]["D1"]["status"] == "complete"
+    assert summary["videos"][0]["production_features"]["duration_bucket"] == "short"
+    assert "data_quality" in summary
+    assert "recommendations" in summary
+
+
+def test_build_summary_uses_legacy_snapshot_within_twelve_hours() -> None:
+    target = YoutubeAnalyticsTarget(
+        render_id="render-1",
+        project_id="project-1",
+        topic="ocean",
+        internal_title="Internal",
+        youtube_title="Ocean",
+        youtube_video_id="video-a",
+        youtube_url=None,
+        uploaded_at="2026-07-08T00:00:00Z",
+        completed_at="2026-07-08T00:00:00Z",
+        experiment_group=None,
+        hypothesis=None,
+        primary_metric="average_view_percentage",
+        secondary_metrics=[],
+        actual_duration_sec=42,
+    )
+    summary, _ = build_summary(
+        [target],
+        {},
+        start_date=date(2026, 7, 8),
+        end_date=date(2026, 7, 10),
+        legacy_snapshots_by_video={
+            "video-a": [
+                {
+                    "collected_at": "2026-07-08T07:00:00Z",
+                    "views": 500,
+                    "average_view_percentage": 55.0,
+                }
+            ]
+        },
+    )
+    assert summary["videos"][0]["maturity_windows"]["D1"]["status"] == "snapshot_fallback"
+    assert summary["videos"][0]["maturity_windows"]["D1"]["metrics"]["views"] == 500
+
+
+def test_sync_render_quality_reports_uses_final_only_and_db_render_ids(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "test.db"
+    init_db(db_path)
+    project = _project(style_id=888753760)
+    rendered = _rendered(project)
+    rendered["render_id"] = "render_quality"
+    quality = {
+        "render_id": "render_quality",
+        "project_id": project["id"],
+        "status": "pass",
+        "summary": {"warning_count": 0, "error_count": 0},
+        "checks": [],
+        "metrics": {
+            "subtitle_count": 1,
+            "max_subtitle_chars": 10,
+            "max_subtitle_cps": 4.0,
+            "final_audio_rms_dbfs": -20.0,
+            "final_audio_peak_dbfs": -2.0,
+        },
+    }
+    final_dir = tmp_path / "renders" / "item" / "final"
+    attempt_dir = tmp_path / "renders" / "item" / "attempts" / "attempt_001"
+    final_dir.mkdir(parents=True)
+    attempt_dir.mkdir(parents=True)
+    (final_dir / "quality_report.json").write_text(json.dumps(quality), encoding="utf-8")
+    (attempt_dir / "quality_report.json").write_text(json.dumps({**quality, "status": "warning"}), encoding="utf-8")
+    with sqlite3.connect(db_path) as connection:
+        connection.row_factory = sqlite3.Row
+        upsert_project(connection, project, "projects/sample/project.youtube.json", "hash")
+        insert_render_summary(connection, rendered)
+        imported = sync_render_quality_reports(connection, renders_dir=tmp_path / "renders")
+        row = connection.execute(
+            "SELECT status, source_path FROM render_quality_reports"
+        ).fetchone()
+    assert imported == 1
+    assert row["status"] == "pass"
+    assert row["source_path"].endswith("final\\quality_report.json")
+
+
 def test_sync_youtube_uploads_from_rendered_files_backfills_db(
     tmp_path: Path,
 ) -> None:
@@ -216,3 +381,73 @@ def test_sync_youtube_uploads_from_rendered_files_backfills_db(
     assert targets[0].youtube_video_id == "abc123"
     assert targets[0].youtube_url == "https://www.youtube.com/watch?v=abc123"
     assert targets[0].uploaded_at == "2026-07-09T00:00:00Z"
+
+
+def test_generate_youtube_analytics_summary_persists_snapshots_for_owned_connection(
+    tmp_path: Path, monkeypatch: object
+) -> None:
+    db_path = tmp_path / "test.db"
+    init_db(db_path)
+    project = _project(style_id=888753760)
+    rendered = _rendered(project)
+
+    with sqlite3.connect(db_path) as connection:
+        connection.row_factory = sqlite3.Row
+        upsert_project(
+            connection, project, "projects/sample/project.youtube.json", "hash"
+        )
+        insert_render_summary(connection, rendered)
+        upsert_youtube_uploads(
+            connection,
+            [
+                {
+                    "render_id": rendered["render_id"],
+                    "planned": True,
+                    "status": "uploaded_private",
+                    "youtube_video_id": "abc123",
+                    "youtube_url": "https://www.youtube.com/watch?v=abc123",
+                    "uploaded_at": "2026-07-09T00:00:00Z",
+                    "error_message": None,
+                }
+            ],
+        )
+
+    service = FakeAnalyticsService(
+        {
+            ("abc123",): {
+                "columnHeaders": [
+                    {"name": "video"},
+                    {"name": "views"},
+                    {"name": "engagedViews"},
+                    {"name": "likes"},
+                    {"name": "comments"},
+                    {"name": "shares"},
+                    {"name": "subscribersGained"},
+                    {"name": "averageViewDuration"},
+                    {"name": "averageViewPercentage"},
+                    {"name": "estimatedMinutesWatched"},
+                ],
+                "rows": [["abc123", 100, 90, 12, 3, 1, 2, 11.5, 55.5, 18.2]],
+            }
+        }
+    )
+    monkeypatch.setattr(analytics_summary, "init_db", lambda: None)
+    monkeypatch.setattr(analytics_summary, "connect", lambda: connect(db_path))
+    monkeypatch.setattr(
+        analytics_summary,
+        "sync_youtube_uploads_from_rendered_files",
+        lambda connection: 0,
+    )
+
+    summary = generate_youtube_analytics_summary(
+        days=1,
+        output_path=tmp_path / "summary.json",
+        analytics_service=service,
+    )
+
+    assert summary["analyzed_video_count"] == 1
+    with sqlite3.connect(db_path) as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM youtube_metrics_snapshots"
+        ).fetchone()[0]
+    assert count == 1

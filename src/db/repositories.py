@@ -288,6 +288,83 @@ def insert_render_summary(
                 (rendered["completed_at"], visual["asset_id"]),
             )
 
+    subtitles = rendered.get("subtitles") or {}
+    style = subtitles.get("style") if isinstance(subtitles, dict) else None
+    if isinstance(style, dict) and style:
+        connection.execute(
+            """
+            INSERT OR REPLACE INTO render_subtitle_styles (
+                render_id, format, font_name, font_size, primary_color,
+                outline_color, outline, shadow, alignment, margin_v
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                rendered["render_id"],
+                subtitles.get("format") or "ass",
+                style.get("font_name") or "Arial",
+                style.get("font_size") or 72,
+                style.get("primary_color") or "FFFFFF",
+                style.get("outline_color") or "000000",
+                style.get("outline") or 0,
+                style.get("shadow") or 0,
+                style.get("alignment") or "bottom_center",
+                style.get("margin_v") or 0,
+            ),
+        )
+    connection.execute(
+        "DELETE FROM render_subtitle_items WHERE render_id = ?",
+        (rendered["render_id"],),
+    )
+    for item in subtitles.get("items", []) if isinstance(subtitles, dict) else []:
+        if not isinstance(item, dict):
+            continue
+        connection.execute(
+            """
+            INSERT INTO render_subtitle_items (
+                render_id, item_index, text, start_sec, end_sec, caption_style_hint
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                rendered["render_id"],
+                item.get("index") or 1,
+                item.get("text") or "",
+                item.get("start_sec") or 0,
+                item.get("end_sec") or 0,
+                item.get("caption_style_hint") or "normal",
+            ),
+        )
+
+    validation = rendered.get("validation") or {}
+    connection.execute(
+        "INSERT OR REPLACE INTO render_validation_results (render_id, project_json_valid, rendered_json_valid) VALUES (?, ?, ?)",
+        (
+            rendered["render_id"],
+            int(bool(validation.get("project_json_valid", True))),
+            int(bool(validation.get("rendered_json_valid", True))),
+        ),
+    )
+    connection.execute(
+        "DELETE FROM render_validation_messages WHERE render_id = ?",
+        (rendered["render_id"],),
+    )
+    for level, messages in (
+        ("warning", validation.get("warnings") or []),
+        ("error", validation.get("errors") or []),
+    ):
+        for index, message in enumerate(messages):
+            if isinstance(message, dict):
+                code = str(message.get("code") or f"VALIDATION_{level.upper()}")
+                text = str(message.get("message") or message)
+                details = json.dumps(message, ensure_ascii=False, sort_keys=True)
+            else:
+                code = f"VALIDATION_{level.upper()}_{index + 1}"
+                text = str(message)
+                details = None
+            connection.execute(
+                "INSERT INTO render_validation_messages (render_id, level, code, message, details_json) VALUES (?, ?, ?, ?, ?)",
+                (rendered["render_id"], level, code, text, details),
+            )
+
 
 def upsert_bgm_tracks(connection: sqlite3.Connection, tracks: list[BgmTrack]) -> None:
     for track in tracks:
@@ -550,6 +627,151 @@ def upsert_youtube_metrics_snapshots(
                 snapshot.get("raw_metrics_json"),
             ),
         )
+
+
+def upsert_youtube_daily_metrics(
+    connection: sqlite3.Connection, rows: list[dict[str, Any]]
+) -> int:
+    """Persist per-video/day Analytics rows without duplicating API retries."""
+
+    written = 0
+    for row in rows:
+        dimensions_json = row.get("dimensions_json") or "{}"
+        if not isinstance(dimensions_json, str):
+            dimensions_json = json.dumps(
+                dimensions_json, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            )
+        connection.execute(
+            """
+            INSERT INTO youtube_daily_metrics (
+                render_id, project_id, youtube_video_id, metric_date, report_kind,
+                dimensions_json, data_through_date, views, engaged_views, likes,
+                comments, shares, subscribers_gained, average_view_duration,
+                average_view_percentage, estimated_minutes_watched, raw_metrics_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(youtube_video_id, metric_date, report_kind, dimensions_json)
+            DO UPDATE SET
+                render_id = excluded.render_id,
+                project_id = excluded.project_id,
+                data_through_date = excluded.data_through_date,
+                collected_at = CURRENT_TIMESTAMP,
+                views = excluded.views,
+                engaged_views = excluded.engaged_views,
+                likes = excluded.likes,
+                comments = excluded.comments,
+                shares = excluded.shares,
+                subscribers_gained = excluded.subscribers_gained,
+                average_view_duration = excluded.average_view_duration,
+                average_view_percentage = excluded.average_view_percentage,
+                estimated_minutes_watched = excluded.estimated_minutes_watched,
+                raw_metrics_json = excluded.raw_metrics_json
+            """,
+            (
+                row["render_id"],
+                row["project_id"],
+                row["youtube_video_id"],
+                row["metric_date"],
+                row.get("report_kind") or "daily_video",
+                dimensions_json,
+                row.get("data_through_date"),
+                row.get("views"),
+                row.get("engaged_views"),
+                row.get("likes"),
+                row.get("comments"),
+                row.get("shares"),
+                row.get("subscribers_gained"),
+                row.get("average_view_duration"),
+                row.get("average_view_percentage"),
+                row.get("estimated_minutes_watched"),
+                row.get("raw_metrics_json"),
+            ),
+        )
+        written += 1
+    return written
+
+
+def upsert_render_quality_reports(
+    connection: sqlite3.Connection, reports: list[dict[str, Any]]
+) -> int:
+    """Store final quality reports; identical hashes are treated as no-ops."""
+
+    written = 0
+    for report in reports:
+        render_id = str(report.get("render_id") or "").strip()
+        report_hash = str(report.get("report_hash") or "").strip()
+        if not render_id or not report_hash:
+            continue
+        duplicate = connection.execute(
+            "SELECT render_id, report_hash FROM render_quality_reports WHERE report_hash = ?",
+            (report_hash,),
+        ).fetchone()
+        if duplicate is not None:
+            # The same final file is already imported. Refresh newly added
+            # normalized columns for legacy rows, but never duplicate content.
+            if duplicate[0] == render_id:
+                connection.execute(
+                    """
+                    UPDATE render_quality_reports
+                    SET quality_report_hash = ?, info_count = ?, metrics_json = ?
+                    WHERE render_id = ?
+                    """,
+                    (
+                        report.get("quality_report_hash") or report_hash,
+                        report.get("info_count"),
+                        report.get("metrics_json"),
+                        render_id,
+                    ),
+                )
+            continue
+        connection.execute(
+            """
+            INSERT INTO render_quality_reports (
+                render_id, report_hash, quality_report_hash, source_path, status,
+                warning_count, error_count, info_count, subtitle_count,
+                max_subtitle_chars, max_subtitle_cps, audio_rms_db, audio_peak_db,
+                summary_json, metrics_json, checks_json, raw_report_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(render_id) DO UPDATE SET
+                report_hash = excluded.report_hash,
+                quality_report_hash = excluded.quality_report_hash,
+                source_path = excluded.source_path,
+                status = excluded.status,
+                warning_count = excluded.warning_count,
+                error_count = excluded.error_count,
+                info_count = excluded.info_count,
+                subtitle_count = excluded.subtitle_count,
+                max_subtitle_chars = excluded.max_subtitle_chars,
+                max_subtitle_cps = excluded.max_subtitle_cps,
+                audio_rms_db = excluded.audio_rms_db,
+                audio_peak_db = excluded.audio_peak_db,
+                summary_json = excluded.summary_json,
+                metrics_json = excluded.metrics_json,
+                checks_json = excluded.checks_json,
+                raw_report_json = excluded.raw_report_json,
+                imported_at = CURRENT_TIMESTAMP
+            """,
+            (
+                render_id,
+                report_hash,
+                report.get("quality_report_hash") or report_hash,
+                report.get("source_path") or "",
+                report.get("status"),
+                report.get("warning_count"),
+                report.get("error_count"),
+                report.get("info_count"),
+                report.get("subtitle_count"),
+                report.get("max_subtitle_chars"),
+                report.get("max_subtitle_cps"),
+                report.get("audio_rms_db"),
+                report.get("audio_peak_db"),
+                report.get("summary_json"),
+                report.get("metrics_json"),
+                report.get("checks_json"),
+                report.get("raw_report_json") or "{}",
+            ),
+        )
+        written += 1
+    return written
 
 
 def _optional_bool_int(value: Any) -> int | None:
