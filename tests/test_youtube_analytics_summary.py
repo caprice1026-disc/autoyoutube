@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import src.youtube.analytics_summary as analytics_summary
@@ -10,6 +10,7 @@ from src.db.database import connect, init_db
 from src.db.repositories import (
     insert_render_summary,
     upsert_project,
+    upsert_youtube_daily_metrics,
     upsert_youtube_uploads,
 )
 from src.youtube.analytics_summary import (
@@ -123,6 +124,11 @@ def test_fetch_daily_video_metrics_parses_day_and_falls_back_without_shorts_filt
     )
     assert rows[0]["metric_date"] == "2026-07-08"
     assert rows[0]["data_through_date"] == "2026-07-09"
+    assert service.reports_resource.calls[0]["dimensions"] == "day"
+    assert service.reports_resource.calls[0]["filters"] == (
+        "video==video-a;creatorContentType==SHORTS"
+    )
+    assert service.reports_resource.calls[1]["filters"] == "video==video-a"
     assert rows[0]["dimensions_json"] == "{}"
     assert len(service.reports_resource.calls) == 2
 
@@ -443,11 +449,162 @@ def test_generate_youtube_analytics_summary_persists_snapshots_for_owned_connect
         days=1,
         output_path=tmp_path / "summary.json",
         analytics_service=service,
+        now=datetime(2026, 7, 25, 0, 30, tzinfo=timezone.utc),
     )
 
     assert summary["analyzed_video_count"] == 1
+    assert summary["end_date"] == "2026-07-24"
     with sqlite3.connect(db_path) as connection:
         count = connection.execute(
             "SELECT COUNT(*) FROM youtube_metrics_snapshots"
         ).fetchone()[0]
     assert count == 1
+
+
+def test_generate_continues_with_structured_query_error(tmp_path: Path, monkeypatch: object) -> None:
+    db_path = tmp_path / "test.db"
+    init_db(db_path)
+    project = _project(style_id=888753760)
+    rendered = _rendered(project)
+    with sqlite3.connect(db_path) as connection:
+        upsert_project(connection, project, "projects/sample/project.youtube.json", "hash")
+        insert_render_summary(connection, rendered)
+        upsert_youtube_uploads(
+            connection,
+            [{
+                "render_id": rendered["render_id"],
+                "planned": True,
+                "status": "uploaded_private",
+                "youtube_video_id": "abc123",
+                "youtube_url": "https://www.youtube.com/watch?v=abc123",
+                "uploaded_at": "2026-07-09T00:00:00Z",
+                "error_message": None,
+            }],
+        )
+        upsert_youtube_daily_metrics(
+            connection,
+            [{
+                "render_id": rendered["render_id"],
+                "project_id": project["id"],
+                "youtube_video_id": "abc123",
+                "metric_date": "2026-07-25",
+                "report_kind": "daily_video",
+                "dimensions_json": "{}",
+                "data_through_date": "2026-07-25",
+                "views": 120,
+                "average_view_percentage": 55.0,
+            }],
+        )
+
+    monkeypatch.setattr(analytics_summary, "init_db", lambda: None)
+    monkeypatch.setattr(analytics_summary, "connect", lambda: connect(db_path))
+    monkeypatch.setattr(
+        analytics_summary,
+        "sync_youtube_uploads_from_rendered_files",
+        lambda connection, issues=None: 0,
+    )
+    monkeypatch.setattr(
+        analytics_summary,
+        "fetch_video_metrics",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("aggregate unavailable")),
+    )
+    monkeypatch.setattr(
+        analytics_summary,
+        "fetch_daily_video_metrics",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("daily unavailable")),
+    )
+
+    summary = generate_youtube_analytics_summary(
+        days=1,
+        output_path=tmp_path / "summary.json",
+        analytics_service=object(),
+        today=date(2026, 7, 25),
+    )
+
+    assert (tmp_path / "summary.json").exists()
+    assert summary["analyzed_video_count"] == 1
+    assert summary["data_quality"]["cached_metric_video_count"] == 1
+    assert summary["data_quality"]["api_errors"]
+    assert {error["category"] for error in summary["data_quality"]["api_errors"]} == {
+        "query_failure"
+    }
+
+
+def test_daily_cache_re_fetches_only_the_recent_72_hour_window(tmp_path: Path) -> None:
+    db_path = tmp_path / "test.db"
+    init_db(db_path)
+    project = _project(style_id=888753760)
+    rendered = _rendered(project)
+    with sqlite3.connect(db_path) as connection:
+        upsert_project(connection, project, "projects/sample/project.youtube.json", "hash")
+        insert_render_summary(connection, rendered)
+        upsert_youtube_daily_metrics(
+            connection,
+            [{
+                "render_id": rendered["render_id"],
+                "project_id": project["id"],
+                "youtube_video_id": "abc123",
+                "metric_date": "2026-07-20",
+                "report_kind": "daily_video",
+                "dimensions_json": "{}",
+                "views": 10,
+            }],
+        )
+        assert analytics_summary._daily_fetch_start(
+            connection,
+            "abc123",
+            start_date=date(2026, 7, 1),
+            end_date=date(2026, 7, 25),
+        ) == date(2026, 7, 17)
+        assert analytics_summary._daily_fetch_start(
+            connection,
+            "abc123",
+            start_date=date(2026, 7, 1),
+            end_date=date(2026, 7, 20),
+        ) == date(2026, 7, 17)
+
+
+def test_generate_reports_auth_failure_without_discarding_summary(
+    tmp_path: Path, monkeypatch: object
+) -> None:
+    db_path = tmp_path / "test.db"
+    init_db(db_path)
+    project = _project(style_id=888753760)
+    rendered = _rendered(project)
+    with sqlite3.connect(db_path) as connection:
+        upsert_project(connection, project, "projects/sample/project.youtube.json", "hash")
+        insert_render_summary(connection, rendered)
+        upsert_youtube_uploads(
+            connection,
+            [{
+                "render_id": rendered["render_id"],
+                "planned": True,
+                "status": "uploaded_private",
+                "youtube_video_id": "abc123",
+                "youtube_url": "https://www.youtube.com/watch?v=abc123",
+                "uploaded_at": "2026-07-09T00:00:00Z",
+                "error_message": None,
+            }],
+        )
+
+    monkeypatch.setattr(analytics_summary, "init_db", lambda: None)
+    monkeypatch.setattr(analytics_summary, "connect", lambda: connect(db_path))
+    monkeypatch.setattr(
+        analytics_summary,
+        "sync_youtube_uploads_from_rendered_files",
+        lambda connection, issues=None: 0,
+    )
+    monkeypatch.setattr(
+        analytics_summary,
+        "build_youtube_analytics_service",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("token unavailable")),
+    )
+
+    summary = generate_youtube_analytics_summary(
+        days=1,
+        output_path=tmp_path / "summary.json",
+        today=date(2026, 7, 25),
+    )
+
+    assert (tmp_path / "summary.json").exists()
+    assert summary["data_quality"]["api_errors"][0]["category"] == "auth_failure"

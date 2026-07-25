@@ -128,7 +128,10 @@ def generate_youtube_analytics_summary(
                 next_step="Run upload-youtube for at least one rendered video, then rerun this command.",
             )
 
-        end_date = today or date.today()
+        clock_now = now or datetime.now(timezone.utc)
+        if clock_now.tzinfo is None:
+            clock_now = clock_now.replace(tzinfo=timezone.utc)
+        end_date = today or clock_now.astimezone(PACIFIC).date()
         if days < 1:
             raise AppError(
                 "Days must be at least 1.",
@@ -137,6 +140,7 @@ def generate_youtube_analytics_summary(
             )
         start_date = end_date - timedelta(days=days - 1)
 
+        api_errors: list[dict[str, Any]] = []
         if analytics_service is None:
             try:
                 service = build_youtube_analytics_service(
@@ -144,54 +148,60 @@ def generate_youtube_analytics_summary(
                     token_path=token_path,
                 )
             except Exception as exc:
-                raise AppError(
-                    "YouTube Analytics authentication failed.",
-                    details=f"category=auth_failure: {exc}",
-                    next_step="Run youtube-auth and verify the Analytics scope/token.",
-                ) from exc
-        else:
-            service = analytics_service
-        try:
-            metrics_by_video_id = fetch_video_metrics(
-                service,
-                [target.youtube_video_id for target in targets],
-                start_date=start_date,
-                end_date=end_date,
-            )
-        except Exception as exc:
-            raise AppError(
-                "YouTube Analytics query failed.",
-                details=f"category=query_failure: {exc}",
-                next_step="Retry later and inspect the Analytics API response.",
-            ) from exc
-        daily_rows: list[dict[str, Any]] = []
-        daily_api_errors: list[dict[str, Any]] = []
-        for target in targets:
-            fetch_start = _daily_fetch_start(
-                connection,
-                target.youtube_video_id,
-                start_date=start_date,
-                end_date=end_date,
-            )
-            if fetch_start is None:
-                continue
-            try:
-                daily_rows.extend(
-                    fetch_daily_video_metrics(
-                        service,
-                        [target.youtube_video_id],
-                        start_date=fetch_start,
-                        end_date=end_date,
-                    )
-                )
-            except Exception as exc:  # API errors are data-quality states, not data loss.
-                daily_api_errors.append(
+                service = None
+                api_errors.append(
                     {
-                        "category": "query_failure",
-                        "youtube_video_id": target.youtube_video_id,
+                        "category": "auth_failure",
                         "message": str(exc),
                     }
                 )
+        else:
+            service = analytics_service
+        metrics_by_video_id: dict[str, dict[str, Any]] = {}
+        if service is not None:
+            try:
+                metrics_by_video_id = fetch_video_metrics(
+                    service,
+                    [target.youtube_video_id for target in targets],
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+            except Exception as exc:
+                api_errors.append(
+                    {
+                        "category": "query_failure",
+                        "message": str(exc),
+                    }
+                )
+        daily_rows: list[dict[str, Any]] = []
+        daily_api_errors: list[dict[str, Any]] = []
+        if service is not None:
+            for target in targets:
+                fetch_start = _daily_fetch_start(
+                    connection,
+                    target.youtube_video_id,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+                if fetch_start is None:
+                    continue
+                try:
+                    daily_rows.extend(
+                        fetch_daily_video_metrics(
+                            service,
+                            [target.youtube_video_id],
+                            start_date=fetch_start,
+                            end_date=end_date,
+                        )
+                    )
+                except Exception as exc:  # API errors are data-quality states, not data loss.
+                    daily_api_errors.append(
+                        {
+                            "category": "query_failure",
+                            "youtube_video_id": target.youtube_video_id,
+                            "message": str(exc),
+                        }
+                    )
         daily_rows = _attach_daily_target_keys(daily_rows, targets)
         upsert_youtube_daily_metrics(connection, daily_rows)
         daily_rows = _load_daily_metrics(
@@ -204,6 +214,27 @@ def generate_youtube_analytics_summary(
             connection,
             [target.youtube_video_id for target in targets],
         )
+        metrics_source_by_video_id = {
+            video_id: "api" for video_id in metrics_by_video_id
+        }
+        cached_daily_by_video: dict[str, list[dict[str, Any]]] = {}
+        for row in daily_rows:
+            cached_daily_by_video.setdefault(str(row["youtube_video_id"]), []).append(row)
+        for target in targets:
+            video_id = target.youtube_video_id
+            if video_id in metrics_by_video_id:
+                continue
+            cached_metrics = _aggregate_metric_rows(cached_daily_by_video.get(video_id, []))
+            if any(value is not None for value in cached_metrics.values()):
+                metrics_by_video_id[video_id] = cached_metrics
+                metrics_source_by_video_id[video_id] = "daily_cache"
+                continue
+            snapshot = _latest_snapshot(legacy_snapshots.get(video_id, []))
+            if snapshot is not None:
+                metrics_by_video_id[video_id] = {
+                    key: snapshot.get(key) for key in SNAPSHOT_NUMERIC_KEYS
+                }
+                metrics_source_by_video_id[video_id] = "snapshot_cache"
         sync_render_quality_reports(connection)
         backfill_rendered_detail_tables(connection)
         summary, snapshot_rows = build_summary(
@@ -214,9 +245,10 @@ def generate_youtube_analytics_summary(
             daily_rows=daily_rows,
             quality_by_render_id=_load_quality_features(connection),
             today_pt=end_date,
-            api_errors=daily_api_errors + sync_issues,
-            now=now,
+            api_errors=api_errors + daily_api_errors + sync_issues,
+            now=clock_now,
             legacy_snapshots_by_video=legacy_snapshots,
+            metrics_source_by_video_id=metrics_source_by_video_id,
         )
         upsert_youtube_metrics_snapshots(connection, snapshot_rows)
 
@@ -649,7 +681,7 @@ def _daily_fetch_start(
         "SELECT MAX(metric_date) AS latest FROM youtube_daily_metrics WHERE youtube_video_id = ?",
         (youtube_video_id,),
     ).fetchone()
-    latest_text = row["latest"] if row is not None else None
+    latest_text = row[0] if row is not None else None
     if not latest_text:
         return start_date
     try:
@@ -743,12 +775,14 @@ def build_summary(
     api_errors: list[dict[str, Any]] | None = None,
     now: datetime | None = None,
     legacy_snapshots_by_video: dict[str, list[dict[str, Any]]] | None = None,
+    metrics_source_by_video_id: dict[str, str] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Build the backwards-compatible summary plus maturity analysis."""
 
     daily_rows = daily_rows or []
     quality_by_render_id = quality_by_render_id or {}
     legacy_snapshots_by_video = legacy_snapshots_by_video or {}
+    metrics_source_by_video_id = metrics_source_by_video_id or {}
     today_pt = today_pt or end_date
     video_rows: list[dict[str, Any]] = []
     snapshot_rows: list[dict[str, Any]] = []
@@ -761,6 +795,9 @@ def build_summary(
 
     for target in targets:
         metrics = metrics_by_video_id.get(target.youtube_video_id)
+        metrics_source = metrics_source_by_video_id.get(
+            target.youtube_video_id, "api" if metrics is not None else None
+        )
         metric_values = {
             key: metrics.get(key) if metrics else None
             for key in SNAPSHOT_NUMERIC_KEYS
@@ -784,6 +821,7 @@ def build_summary(
             },
             **metric_values,
             "metrics": metrics,
+            "metrics_source": metrics_source,
             "snapshot_delta": _snapshot_delta(
                 metrics,
                 _latest_snapshot(legacy_snapshots_by_video.get(target.youtube_video_id, [])),
@@ -851,33 +889,34 @@ def build_summary(
         if metrics is None:
             continue
         analyzed_rows.append(row)
-        snapshot_rows.append(
-            {
-                "render_id": target.render_id,
-                "project_id": target.project_id,
-                "youtube_video_id": target.youtube_video_id,
-                "snapshot_date": end_date.isoformat(),
-                "views": metrics.get("views"),
-                "engaged_views": metrics.get("engaged_views"),
-                "likes": metrics.get("likes"),
-                "comments": metrics.get("comments"),
-                "shares": metrics.get("shares"),
-                "subscribers_gained": metrics.get("subscribers_gained"),
-                "average_view_duration": metrics.get("average_view_duration"),
-                "average_view_percentage": metrics.get("average_view_percentage"),
-                "estimated_minutes_watched": metrics.get("estimated_minutes_watched"),
-                "raw_metrics_json": json.dumps(
-                    {
-                        "youtube_video_id": target.youtube_video_id,
-                        "metrics": metrics,
-                        "start_date": start_date.isoformat(),
-                        "end_date": end_date.isoformat(),
-                    },
-                    ensure_ascii=False,
-                    sort_keys=True,
-                ),
-            }
-        )
+        if metrics_source == "api":
+            snapshot_rows.append(
+                {
+                    "render_id": target.render_id,
+                    "project_id": target.project_id,
+                    "youtube_video_id": target.youtube_video_id,
+                    "snapshot_date": end_date.isoformat(),
+                    "views": metrics.get("views"),
+                    "engaged_views": metrics.get("engaged_views"),
+                    "likes": metrics.get("likes"),
+                    "comments": metrics.get("comments"),
+                    "shares": metrics.get("shares"),
+                    "subscribers_gained": metrics.get("subscribers_gained"),
+                    "average_view_duration": metrics.get("average_view_duration"),
+                    "average_view_percentage": metrics.get("average_view_percentage"),
+                    "estimated_minutes_watched": metrics.get("estimated_minutes_watched"),
+                    "raw_metrics_json": json.dumps(
+                        {
+                            "youtube_video_id": target.youtube_video_id,
+                            "metrics": metrics,
+                            "start_date": start_date.isoformat(),
+                            "end_date": end_date.isoformat(),
+                        },
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    ),
+                }
+            )
 
     observations, baselines, experiments = _build_analysis_observations(video_rows)
     recommendations = _build_recommendations(observations)
@@ -1053,6 +1092,26 @@ def _aggregate_daily_window(
     return result
 
 
+def _aggregate_metric_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate cached daily rows when the current aggregate API query fails."""
+
+    if not rows:
+        return {key: None for key in SNAPSHOT_NUMERIC_KEYS}
+    views = _sum_metric(rows, "views")
+    result = {
+        key: _sum_metric(rows, key)
+        for key in SNAPSHOT_NUMERIC_KEYS
+        if key not in {"average_view_duration", "average_view_percentage"}
+    }
+    result["average_view_duration"] = _weighted_average(
+        rows, "average_view_duration", views or 0
+    )
+    result["average_view_percentage"] = _weighted_average(
+        rows, "average_view_percentage", views or 0
+    )
+    return result
+
+
 def _production_features(
     target: YoutubeAnalyticsTarget, quality: dict[str, Any] | None
 ) -> dict[str, Any]:
@@ -1188,9 +1247,6 @@ def _build_analysis_observations(
             group_size=group_size,
             baseline_iqr=baseline.get("iqr"),
         )
-        if group_status == "directional" and status == "inconclusive":
-            delta = (_metric_number(item.get("value")) or 0) - (baseline.get("median") or 0)
-            status = "directional_positive" if delta > 0 else "directional_negative"
         enriched = {
             **item,
             "group_size": group_size,
@@ -1283,7 +1339,14 @@ def _data_quality(
     )
     return {
         "uploaded_video_count": len(rows),
-        "api_metric_video_count": sum(1 for row in rows if row.get("metrics") is not None),
+        "api_metric_video_count": sum(
+            1 for row in rows if row.get("metrics_source") == "api"
+        ),
+        "cached_metric_video_count": sum(
+            1
+            for row in rows
+            if row.get("metrics_source") in {"daily_cache", "snapshot_cache"}
+        ),
         "pending_api_video_count": reason_counts.get("pending_api_data", 0),
         "missing_video_count": missing_data_video_count,
         "unavailable_maturity_video_count": unavailable_maturity_video_count,
@@ -1364,6 +1427,7 @@ def format_console_summary(summary: dict[str, Any]) -> list[str]:
             "Uploads: "
             f"total={quality.get('uploaded_video_count', summary.get('video_count', 0))}, "
             f"api_metrics={quality.get('api_metric_video_count', summary.get('analyzed_video_count', 0))}, "
+            f"cached_metrics={quality.get('cached_metric_video_count', 0)}, "
             f"pending={quality.get('pending_api_video_count', 0)}, "
             f"missing={quality.get('missing_video_count', 0)}",
         )

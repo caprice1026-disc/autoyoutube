@@ -30,6 +30,19 @@ def test_maturity_uses_pacific_calendar_and_dst_boundary() -> None:
     assert result["window"] == "D1"
 
 
+def test_all_maturity_windows_use_the_first_complete_days_after_launch() -> None:
+    uploaded = "2026-07-10T12:00:00Z"
+    for window_days, label in ((1, "D1"), (3, "D3"), (7, "D7"), (28, "D28")):
+        result = maturity_window_status(
+            uploaded,
+            window_days=window_days,
+            today_pt=date(2026, 7, 10) + timedelta(days=window_days + 1),
+            data_through_date=date(2026, 7, 10) + timedelta(days=window_days),
+        )
+        assert result["window"] == label
+        assert result["status"] == "complete"
+
+
 def test_maturity_reports_partial_and_api_lag_states() -> None:
     uploaded = "2026-07-10T12:00:00Z"
     partial = maturity_window_status(
@@ -60,6 +73,10 @@ def test_maturity_reports_partial_and_api_lag_states() -> None:
 def test_nearest_snapshot_respects_twelve_hour_tolerance() -> None:
     target = datetime(2026, 7, 10, 12, tzinfo=timezone.utc)
     assert nearest_snapshot(
+        [{"collected_at": (target - timedelta(hours=12)).isoformat(), "views": 3}],
+        target,
+    )["views"] == 3
+    assert nearest_snapshot(
         [{"collected_at": (target + timedelta(hours=12)).isoformat(), "views": 1}],
         target,
     )["views"] == 1
@@ -76,7 +93,9 @@ def test_thresholds_and_duration_buckets_are_explicit() -> None:
     assert classify_view_confidence(499) == "provisional"
     assert classify_view_confidence(500) == "comparable"
     assert classify_group_size(1) == "insufficient_group"
+    assert classify_group_size(2) == "insufficient_group"
     assert classify_group_size(3) == "directional"
+    assert classify_group_size(4) == "directional"
     assert classify_group_size(5) == "actionable"
     assert duration_bucket(45) == "short"
     assert duration_bucket(45.1) == "medium"
@@ -105,6 +124,10 @@ def test_derived_rates_keep_zero_denominators_null() -> None:
     assert rates["subscriber_gain_rate"] is None
     assert rates["watch_minutes_per_view"] is None
     assert rates["rate_unavailable_reasons"]["likes"] == "views_zero"
+
+    missing_views = derive_rates({"views": None, "likes": 3})
+    assert missing_views["like_rate"] is None
+    assert missing_views["rate_unavailable_reasons"]["likes"] == "views_missing"
 
     rates = derive_rates({"views": 100, "likes": 12, "estimated_minutes_watched": 25})
     assert rates["like_rate"] == 0.12
@@ -149,6 +172,7 @@ def test_hypothesis_and_recommendations_never_claim_causality() -> None:
     assert hypothesis_status(value=60, baseline_median=40, group_size=2, baseline_iqr=10) == "insufficient_group"
     assert hypothesis_status(value=None, baseline_median=40, group_size=10, baseline_iqr=10) == "insufficient_data"
     assert hypothesis_status(value=60, baseline_median=40, group_size=3, baseline_iqr=10) == "directional_positive"
+    assert hypothesis_status(value=40, baseline_median=40, group_size=3, baseline_iqr=10) == "inconclusive"
     assert hypothesis_status(value=60, baseline_median=40, group_size=10, baseline_iqr=10) == "actionable_positive"
     assert hypothesis_status(value=41, baseline_median=40, group_size=10, baseline_iqr=10) == "inconclusive"
 

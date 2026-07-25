@@ -6,15 +6,15 @@
 
 ## Progress checklist
 
-- [x] 現行CLI、DB件数、投稿日、再生数、尺、品質レポートの実データを確認
-- [ ] 日本時間ではなく YouTube Analytics の PT 日境界を扱う純粋な分析関数を追加
-- [ ] D1/D3/D7/D28、遅延、±12時間フォールバック、視聴数・グループ閾値をテスト先行で実装
-- [ ] `youtube_daily_metrics` と `render_quality_reports` を追加し、冪等upsert/hash dedupeを実装
-- [ ] production features、中央値/IQRベースライン、仮説、決定論的提案を実装
-- [ ] v2 JSON と既存キーを併記し、コンソール表示・エラー分類・CLI互換性を更新
-- [x] 対象テスト、Ruff、認証が利用可能なら実CLIスモークを実行
-- [ ] 全pytest（既存の別作業による3件の失敗を切り分け中）
-- [ ] `rendered.youtube.json`、`quality_report.json`、DB行から提案までの証拠参照を確認
+- [x] (2026-07-21) 現行CLI、DB件数、投稿日、再生数、尺、品質レポートの実データを確認
+- [x] (2026-07-21) 日本時間ではなく YouTube Analytics のPT日境界を扱う純粋な分析関数を追加
+- [x] (2026-07-25) D1/D3/D7/D28、遅延、±12時間フォールバック、視聴数・グループ閾値をテスト先行で実装
+- [x] (2026-07-21) `youtube_daily_metrics` と `render_quality_reports` を追加し、冪等upsert/hash dedupeを実装
+- [x] (2026-07-21) production features、中央値/IQRベースライン、仮説、決定論的提案を実装
+- [x] (2026-07-21) v2 JSON と既存キーを併記し、コンソール表示・エラー分類・CLI互換性を更新
+- [x] (2026-07-21) 対象テスト、Ruff、認証が利用可能な実CLIスモークを実行
+- [x] (2026-07-25) 全pytestを実行し、境界値・API失敗継続テストを含む154件全件通過
+- [x] (2026-07-25) `rendered.youtube.json`、`quality_report.json`、DB行から提案までの証拠参照を確認
 
 ## Surprises & Discoveries
 
@@ -24,7 +24,9 @@
 - `render_subtitle_items` と `render_validation_messages` は現行DBで0件だが、レンダーJSON/品質レポートには情報があるため正規化取り込みが必要。
 - `quality_report.json` は古い試行を含む可能性があるため、DBの有効な`render_id`とfinalパスを照合する。
 - 実CLIでは47本中9本に集計値、日次24行、品質レポート48行、字幕514行を取り込みできた。D28完了は0本で、比較可能グループは0だった。
-- 全pytestは141 passed / 3 failed。失敗は既存の`make_video`視覚リトライ・Geminiキーワード・Pexelsキーワードキャッシュの未コミット変更にあるテストで、今回の分析変更とは無関係。
+- 2026-07-21の全pytestは、`.env`由来のGemini設定が後続テストへ漏れる問題を`tests/conftest.py`で隔離した後、146 passedになった。これは本機能の実装だけでなく既存CLIテストの再現性も検証する結果になった。
+- 2026-07-25の監査で、境界値テストに不足していたグループ数2/4、views=null、±12時間の負方向、D3/D7/D28の全窓を追加した。
+- 2026-07-25の監査で、認証・集計クエリに失敗しても日次キャッシュ／旧スナップショットから部分分析を継続し、API日付の既定値をPT暦日に固定する処理を追加した。
 
 ## Decision Log
 
@@ -39,7 +41,7 @@
 
 ## Outcomes & Retrospective
 
-既存v1キーを壊さずv2スキーマを追加し、比較不能理由を出力できた。日次取得・品質取り込みは再実行しても行数が増えず、`render_quality_reports`のhash dedupeもfixtureで確認した。全pytestの3件は既存の別変更を直すと解消する見込みだが、スコープ外のため修正しない。
+既存v1キーを壊さずv2スキーマを追加し、比較不能理由を出力できた。日次取得・品質取り込みは再実行しても行数が増えず、`render_quality_reports`のhash dedupeもfixtureで確認した。2026-07-25の実行では52本中37本に集計値、日次92行、品質53行を利用し、比較可能グループは0、方向性グループは3だった。提案はすべて保留で、これは不足データから強い結論を出さないという目的に沿う。
 
 ## Context and Orientation
 
@@ -90,11 +92,20 @@ YouTube Analytics APIの`day`ディメンションとPT日境界、既存SQLite�
 
 - `\\.venv\\Scripts\\python.exe -m ruff check src tests`: 通過。
 - 分析関連および既存機能の除外テスト: 132件通過。
-- 全pytest: 143件通過、3件失敗。失敗は既存の`make_video`リトライ/キーワード期待値2件とPexelsキーワードキャッシュ1件で、今回の分析変更外の未コミット差分に起因するため修正しない。
-- 実CLI `youtube-analytics-summary --days 28`: 成功。47本中9本を集計、日次24行、品質48行、字幕514行を正規化し、同じCLIを再実行して行数増加なし。
+- 全pytest: 154件通過（境界値・API失敗継続テストを追加後）。
+- 実CLI `youtube-analytics-summary --days 28`: 成功。52本中37本を集計、日次92行、品質53行、字幕560行を確認し、APIエラー0件・運用エラー80件を分類表示。
 
 ## Completion Audit
 
 - 品質レポートは`status/error_count/warning_count/info_count/metrics_json/checks_json/raw_report_json/quality_report_hash/source_path/imported_at`を保持する列へ移行し、既存48件をバックフィル済み。
 - 成熟度、ビュー信頼度、グループ閾値、中央値/IQR、日次キャッシュ、±12時間フォールバック、スナップショット差分、制作特徴、根拠付き提案をJSONで検証済み。
-- 全pytestは146件通過、Ruffも通過。実CLIは成功し、push前の最終差分確認へ進む。
+- 全pytestは154件通過、Ruffも通過。実CLIは成功し、認証・クエリ失敗時の部分成功もfixtureで確認済み。変更の再コミット・push前の最終差分確認へ進む。
+
+## 2026-07-25 Completion Audit Update
+
+- 貼付ゴールをUTF-8で再読し、成熟度、API、派生指標、DB、制作特徴、仮説、提案、出力、エラー、テスト、完了条件を項目ごとに再監査した。
+- 現在の `master` は `7a445a9 Improve YouTube post-publication analytics` を祖先に持ち、後続の生成イントロ機能マージ後も分析コード・テスト・ExecPlanが残っている。
+- `tests/test_youtube_analytics_analysis.py` にD1/D3/D7/D28全窓、views null、グループ2/3/4/5、スナップショット±12時間の境界を追加した。
+- 監査後の証拠は、Ruff成功、pytest全件成功、認証済み実CLI成功、JSON/SQLiteの必須項目確認、禁止生成物がGit対象外であること、変更をpushする前のmaster差分確認である。
+
+この更新は、前回の実装完了記録と現在の検証結果を一致させ、貼付ゴールに記載された境界テストの不足を補うために行った（2026-07-25）。
