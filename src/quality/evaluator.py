@@ -28,6 +28,7 @@ from src.defaults import (
     TARGET_WIDTH,
 )
 from src.errors import AppError
+from src.quality.check_groups import collect_quality_checks
 from src.utils.file_hash import sha256_file
 from src.validators.json_validator import load_json
 
@@ -48,15 +49,18 @@ def evaluate_render(
     rendered = load_json(rendered_path)
     probe_result = _probe_output_video(rendered, video_probe or _ffprobe_video)
     audio_checks, audio_metrics = _audio_checks(rendered)
-    checks: list[dict[str, Any]] = []
-    checks.extend(_file_checks(rendered))
-    checks.extend(_video_checks(rendered, probe_result))
-    checks.extend(audio_checks)
-    checks.extend(_credit_checks(rendered))
-    checks.extend(_subtitle_checks(rendered))
-    checks.extend(_bgm_checks(rendered))
-    checks.extend(_ffmpeg_checks(rendered))
-    checks.extend(_visual_checks(rendered))
+    checks = collect_quality_checks(
+        rendered,
+        probe_result,
+        audio_checks,
+        file_checks=_file_checks,
+        video_checks=_video_checks,
+        credit_checks=_credit_checks,
+        subtitle_checks=_subtitle_checks,
+        bgm_checks=_bgm_checks,
+        ffmpeg_checks=_ffmpeg_checks,
+        visual_checks=_visual_checks,
+    )
     metrics = _metrics(rendered, probe_result, audio_metrics)
     status = _status(checks)
     report = {

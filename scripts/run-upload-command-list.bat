@@ -3,9 +3,8 @@ setlocal EnableExtensions
 
 set "SCRIPT_DIR=%~dp0"
 set "ROOT_DIR=%SCRIPT_DIR%.."
-set "COMMAND_FILE=%ROOT_DIR%\commands\upload_commands.txt"
 
 cd /d "%ROOT_DIR%"
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%run-upload-command-list.ps1" -CommandFile "%COMMAND_FILE%" %*
+powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%run-upload-command-list.ps1" %*
 exit /b %ERRORLEVEL%

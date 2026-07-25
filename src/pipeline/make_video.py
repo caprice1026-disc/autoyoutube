@@ -19,11 +19,26 @@ from src.errors import AppError
 from src.media.gemini_keyword_extractor import extract_keywords_for_project
 from src.media.pexels_client import PexelsClient
 from src.media.visual_fetcher import fetch_visuals_for_project
+from src.pipeline.project_normalization import (
+    normalize_project_for_schema,
+    project_with_bgm_override as _project_with_bgm_override,
+    project_with_visual_keywords,
+    queries_for_plan,
+)
 from src.pipeline.render_project import _render_dir_name, render_project
 from src.quality.evaluator import evaluate_render
 from src.quality.inspector import inspect_render
 from src.render.ffmpeg_renderer import FfmpegVideoRenderer
 from src.repair.failure_classifier import classify_exception
+from src.repair.logs import (
+    append_quality_failure as _append_quality_failure,
+    check_summaries as _check_summaries,
+    empty_failure_log as _empty_failure_log,
+    empty_repair_log as _empty_repair_log,
+    exit_code_from_failure as _exit_code_from_failure,
+    status_from_failure as _status_from_failure,
+    write_json as _write_json,
+)
 from src.repair.quality_repair import decide_repair
 from src.utils.file_hash import sha256_file
 from src.validators.json_validator import load_json, validate_json
@@ -66,7 +81,7 @@ class MakeVideoResult:
 
 def make_video(options: MakeVideoOptions) -> MakeVideoResult:
     project_path = options.project_path.resolve()
-    project = _project_with_schema_fallbacks(load_json(project_path))
+    project = normalize_project_for_schema(load_json(project_path), log=_log)
     _validate_project(project, project_path)
     config = load_auto_repair_config(options.config_path)
     max_attempts = resolve_max_fix_attempts(
@@ -319,28 +334,9 @@ def _validate_project(project: dict[str, Any], project_path: Path) -> None:
 
 
 def _project_with_schema_fallbacks(project: dict[str, Any]) -> dict[str, Any]:
-    schema = load_json(PROJECT_SCHEMA_PATH)
-    allowed_moods = set(
-        schema.get("properties", {})
-        .get("bgm", {})
-        .get("properties", {})
-        .get("mood", {})
-        .get("enum", [])
-    )
-    fallback_mood = "mysterious"
-    bgm = project.get("bgm")
-    if (
-        isinstance(bgm, dict)
-        and "mood" in bgm
-        and fallback_mood in allowed_moods
-        and bgm.get("mood") not in allowed_moods
-    ):
-        updated = json.loads(json.dumps(project, ensure_ascii=False))
-        before = updated["bgm"].get("mood")
-        updated["bgm"]["mood"] = fallback_mood
-        _log(f"bgm.mood '{before}' is outside schema; using '{fallback_mood}'")
-        return updated
-    return project
+    """Compatibility wrapper for callers of the former private helper."""
+
+    return normalize_project_for_schema(project, log=_log)
 
 
 def _build_plan(
@@ -372,86 +368,22 @@ def _build_plan(
     }
 
 
-def _project_with_bgm_override(
-    project: dict[str, Any], bgm_id: str | None
-) -> dict[str, Any]:
-    if not bgm_id:
-        return project
-    updated = json.loads(json.dumps(project, ensure_ascii=False))
-    bgm = updated.setdefault("bgm", {})
-    if isinstance(bgm, dict):
-        bgm["track_id"] = bgm_id
-    return updated
-
-
 def _project_with_visual_keywords(
     project: dict[str, Any], options: MakeVideoOptions
 ) -> dict[str, Any]:
-    keywords = _unique_non_empty(options.visual_keywords)
-    if not keywords:
-        return project
-
-    updated = json.loads(json.dumps(project, ensure_ascii=False))
-    visual_strategy = updated.setdefault("visual_strategy", {})
-    if not isinstance(visual_strategy, dict):
-        visual_strategy = {}
-        updated["visual_strategy"] = visual_strategy
-
-    if options.query_mode == "override":
-        visual_strategy["primary_query"] = keywords[0]
-        visual_strategy["fallback_queries"] = _limit_unique_queries(
-            keywords[1:] or [keywords[0]], 8
-        )
-        script = updated.get("script", [])
-        if isinstance(script, list):
-            for index, item in enumerate(script):
-                if isinstance(item, dict):
-                    item["visual_query"] = keywords[index % len(keywords)]
-        return updated
-
-    fallback_queries = visual_strategy.get("fallback_queries", [])
-    if not isinstance(fallback_queries, list):
-        fallback_queries = []
-    visual_strategy["fallback_queries"] = _limit_unique_queries(
-        [str(query) for query in fallback_queries] + keywords, 8
+    return project_with_visual_keywords(
+        project,
+        options.visual_keywords,
+        query_mode=options.query_mode,
     )
-    return updated
 
 
 def _queries_for_plan(project: dict[str, Any], options: MakeVideoOptions) -> list[str]:
-    json_queries: list[str] = []
-    visual_strategy = project.get("visual_strategy", {})
-    if isinstance(visual_strategy, dict) and visual_strategy.get("primary_query"):
-        json_queries.append(str(visual_strategy["primary_query"]))
-    for item in project.get("script", []):
-        if isinstance(item, dict) and item.get("visual_query"):
-            json_queries.append(str(item["visual_query"]))
-    if isinstance(visual_strategy, dict):
-        for query in visual_strategy.get("fallback_queries", []):
-            if query:
-                json_queries.append(str(query))
-
-    if options.query_mode == "override":
-        return list(options.visual_keywords)
-    if options.query_mode == "fallback":
-        return json_queries + list(options.visual_keywords)
-    return json_queries + list(options.visual_keywords)
-
-
-def _unique_non_empty(values: list[str]) -> list[str]:
-    seen: set[str] = set()
-    output: list[str] = []
-    for value in values:
-        normalized = str(value or "").strip()
-        if not normalized or normalized in seen:
-            continue
-        seen.add(normalized)
-        output.append(normalized)
-    return output
-
-
-def _limit_unique_queries(values: list[str], limit: int) -> list[str]:
-    return _unique_non_empty(values)[:limit]
+    return queries_for_plan(
+        project,
+        query_mode=options.query_mode,
+        visual_keywords=options.visual_keywords,
+    )
 
 
 def _fetch_visuals(
@@ -606,54 +538,6 @@ def _next_run_dir(project: dict[str, Any]) -> Path:
         suffix += 1
 
 
-def _empty_repair_log(
-    project: dict[str, Any], seed: int, max_attempts: int
-) -> dict[str, Any]:
-    return {
-        "schema_version": "repair-log-1.0.0",
-        "project_id": project.get("id"),
-        "seed": seed,
-        "max_attempts": max_attempts,
-        "final_status": "running",
-        "final_attempt": None,
-        "attempts": [],
-    }
-
-
-def _empty_failure_log() -> dict[str, Any]:
-    return {"schema_version": "failure-log-1.0.0", "failures": []}
-
-
-def _check_summaries(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [
-        {
-            "code": check.get("code"),
-            "level": check.get("level"),
-            "auto_fixable": bool(check.get("auto_fixable")),
-            "target": check.get("target"),
-        }
-        for check in checks
-    ]
-
-
-def _append_quality_failure(
-    failure_log: dict[str, Any],
-    attempt: int,
-    checks: list[dict[str, Any]],
-) -> None:
-    for check in checks:
-        failure_log["failures"].append(
-            {
-                "category": "quality_error",
-                "code": check.get("code"),
-                "message": check.get("message"),
-                "attempt": attempt,
-                "recoverable": bool(check.get("auto_fixable")),
-                "action": "human_review_required",
-            }
-        )
-
-
 def _write_visual_assignment(
     run_dir: Path,
     rendered_path: Path,
@@ -703,19 +587,6 @@ def _write_visual_assignment(
     )
 
 
-def _status_from_failure(failure: dict[str, Any]) -> str:
-    return str(failure.get("category") or "failed")
-
-
-def _exit_code_from_failure(failure: dict[str, Any]) -> int:
-    return {
-        "environment_error": 40,
-        "external_api_error": 50,
-        "render_error": 60,
-        "encoding_error": 70,
-    }.get(str(failure.get("category")), 60)
-
-
 def _config_int(config: dict[str, Any], section: str, key: str, default: int) -> int:
     value = (
         config.get(section, {}).get(key)
@@ -726,14 +597,6 @@ def _config_int(config: dict[str, Any], section: str, key: str, default: int) ->
         return int(value) if value is not None else default
     except (TypeError, ValueError):
         return default
-
-
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
 
 
 def _next_fetch_budget(

@@ -7,6 +7,7 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $makeVideoPs1 = Join-Path $PSScriptRoot "make-video.ps1"
+$generatedIntroPs1 = Join-Path $PSScriptRoot "make-video-with-generated-intro.ps1"
 
 if (-not (Test-Path $CommandFile)) {
   Write-Error "[runner] command file not found: $CommandFile"
@@ -35,6 +36,18 @@ function Get-QuotedValue {
   return ""
 }
 
+function Get-OptionValue {
+  param(
+    [string]$Command,
+    [string]$Option
+  )
+  $pattern = [regex]::Escape($Option) + '\s+(?:"([^"]+)"|([^\s]+))'
+  $match = [regex]::Match($Command, $pattern)
+  if (-not $match.Success) { return "" }
+  if ($match.Groups[1].Success) { return $match.Groups[1].Value }
+  return $match.Groups[2].Value
+}
+
 function Quote-ForPowerShell {
   param([string]$Value)
   return '"' + ($Value -replace '"', '\"') + '"'
@@ -43,12 +56,22 @@ function Quote-ForPowerShell {
 function Invoke-ConvertedCommand {
   param([string]$Command)
 
-  $projectPath = Get-QuotedValue -Command $Command -Pattern '^scripts/make-video\.sh\s+("[^"]+"|[^\s]+)'
+  $scriptMatch = [regex]::Match(
+    $Command,
+    '^(scripts/make-video(?:-with-generated-intro)?\.sh)\s+("[^"]+"|[^\s]+)'
+  )
+  if (-not $scriptMatch.Success) {
+    throw "Unsupported video command (expected make-video.sh or make-video-with-generated-intro.sh): $Command"
+  }
+  $scriptName = $scriptMatch.Groups[1].Value
+  $projectPath = $scriptMatch.Groups[2].Value
   if ($projectPath.StartsWith('"') -and $projectPath.EndsWith('"')) {
     $projectPath = $projectPath.Trim('"')
   }
-  if (-not $projectPath) {
-    throw "Could not parse project path from command: $Command"
+  $wrapperPath = if ($scriptName -eq "scripts/make-video-with-generated-intro.sh") {
+    $generatedIntroPs1
+  } else {
+    $makeVideoPs1
   }
 
   $videoKeywords = @()
@@ -68,6 +91,7 @@ function Invoke-ConvertedCommand {
   $bgmId = Get-QuotedValue -Command $Command -Pattern '--bgm-id\s+"?([^"\s]+)"?'
   $seed = Get-QuotedValue -Command $Command -Pattern '--seed\s+(\d+)'
   $maxFixAttempts = Get-QuotedValue -Command $Command -Pattern '--max-fix-attempts\s+(\d+)'
+  $generatedIntroPath = Get-OptionValue -Command $Command -Option '--generated-intro-path'
 
   $psArgsText = @(
     '-ProjectPath ' + (Quote-ForPowerShell $projectPath)
@@ -87,6 +111,7 @@ function Invoke-ConvertedCommand {
   if ($bgmId) { $psArgsText += '-BgmId ' + (Quote-ForPowerShell $bgmId) }
   if ($seed) { $psArgsText += '-Seed ' + (Quote-ForPowerShell $seed) }
   if ($maxFixAttempts) { $psArgsText += '-MaxFixAttempts ' + (Quote-ForPowerShell $maxFixAttempts) }
+  if ($generatedIntroPath) { $psArgsText += '-GeneratedIntroPath ' + (Quote-ForPowerShell $generatedIntroPath) }
   if ($Command -match '--no-auto-fix') { $psArgsText += '-NoAutoFix' }
   if ($Command -match '--plan-only') { $psArgsText += '-PlanOnly' }
   if ($Command -match '--dry-run') { $psArgsText += '-DryRun' }
@@ -95,7 +120,9 @@ function Invoke-ConvertedCommand {
   if ($Command -match '--skip-inspect') { $psArgsText += '-SkipInspect' }
   if ($Command -match '--skip-evaluate') { $psArgsText += '-SkipEvaluate' }
 
-  $commandText = '-ExecutionPolicy Bypass -File ' + (Quote-ForPowerShell $makeVideoPs1) + ' ' + ($psArgsText -join ' ')
+  $commandText = '-ExecutionPolicy Bypass -File ' + (Quote-ForPowerShell $wrapperPath) + ' ' + ($psArgsText -join ' ')
+  Write-RunnerLog "[runner] translated script: $scriptName"
+  Write-RunnerLog "[runner] translated wrapper: $wrapperPath"
   Write-RunnerLog "[runner] translated project: $projectPath"
   Write-RunnerLog "[runner] translated keywords: $($videoKeywords.Count)"
   Write-RunnerLog "[runner] translated args: $commandText"

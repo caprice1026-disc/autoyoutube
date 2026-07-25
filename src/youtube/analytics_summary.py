@@ -31,6 +31,9 @@ from src.youtube.analytics_analysis import (
     nearest_snapshot,
     to_pacific_date,
 )
+from src.youtube.analytics_presentation import (
+    format_console_summary as _format_console_summary,
+)
 
 DEFAULT_SUMMARY_PATH = Path("data/youtube_analytics_summary.json")
 ANALYTICS_METRICS = (
@@ -91,6 +94,12 @@ class YoutubeAnalyticsTarget:
     raw_project_json: str | None = None
     raw_rendered_json: str | None = None
     actual_uploaded_at: str | None = None
+
+
+def format_console_summary(summary: dict[str, Any]) -> list[str]:
+    """Compatibility facade for the presentation layer."""
+
+    return _format_console_summary(summary)
 
 
 def generate_youtube_analytics_summary(
@@ -1382,7 +1391,7 @@ def _data_quality(
     }
 
 
-def format_console_summary(summary: dict[str, Any]) -> list[str]:
+def _legacy_format_console_summary(summary: dict[str, Any]) -> list[str]:
     lines = [
         f"Analyzed videos: {summary['analyzed_video_count']} / {summary['video_count']}",
         f"Date range: {summary['start_date']} .. {summary['end_date']}",
