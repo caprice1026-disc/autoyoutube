@@ -56,6 +56,24 @@ function Quote-ForPowerShell {
 function Invoke-ConvertedCommand {
   param([string]$Command)
 
+  $directMatch = [regex]::Match(
+    $Command,
+    '^(?:\.?[\\/])?scripts[\\/](make-video(?:-with-generated-intro)?\.ps1)(?:\s+(.*))?$',
+    [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+  )
+  if ($directMatch.Success) {
+    $scriptName = $directMatch.Groups[1].Value
+    $wrapperPath = Join-Path $PSScriptRoot $scriptName
+    $argumentText = $directMatch.Groups[2].Value
+    $commandText = '-ExecutionPolicy Bypass -File ' + (Quote-ForPowerShell $wrapperPath)
+    if ($argumentText) { $commandText += ' ' + $argumentText }
+    Write-RunnerLog "[runner] direct PowerShell command: $scriptName"
+    Write-RunnerLog "[runner] translated wrapper: $wrapperPath"
+    Write-RunnerLog "[runner] translated args: $commandText"
+    $process = Start-Process -FilePath "powershell" -ArgumentList $commandText -Wait -PassThru -NoNewWindow
+    return [int]$process.ExitCode
+  }
+
   $scriptMatch = [regex]::Match(
     $Command,
     '^(scripts/make-video(?:-with-generated-intro)?\.sh)\s+("[^"]+"|[^\s]+)'
@@ -131,9 +149,9 @@ function Invoke-ConvertedCommand {
   return [int]$process.ExitCode
 }
 
-$commands = Get-Content $CommandFile |
+$commands = @(Get-Content $CommandFile |
   ForEach-Object { $_.Trim() } |
-  Where-Object { $_ -and -not $_.StartsWith("#") }
+  Where-Object { $_ -and -not $_.StartsWith("#") })
 
 if ($commands.Count -eq 0) {
   Write-RunnerLog "[runner] no commands found."
@@ -161,7 +179,7 @@ for ($i = 0; $i -lt $commands.Count; $i++) {
   Write-RunnerLog "[runner] command: $command"
   Write-Host "============================================================"
 
-  if ($RequireUploadYoutube -and ($command -notmatch "--upload-youtube")) {
+  if ($RequireUploadYoutube -and ($command -notmatch "(?i)(--upload-youtube|-uploadyoutube)(\s|$)")) {
     Write-RunnerLog "[runner] stopped. command does not include --upload-youtube."
     Write-RunnerLog "[runner] failed command [$number/$($commands.Count)]"
     exit 1

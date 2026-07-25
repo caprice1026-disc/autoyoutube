@@ -15,3 +15,5 @@ def test_upload_runner_supports_both_video_wrappers() -> None:
     assert "--generated-intro-path" in runner
     assert "-GeneratedIntroPath" in runner
     assert "scripts/make-video(?:-with-generated-intro)?" in runner
+    assert "$commands = @(" in runner
+    assert "make-video(?:-with-generated-intro)?\\.ps1" in runner
