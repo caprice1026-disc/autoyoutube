@@ -32,6 +32,32 @@ def test_remove_audio_track_uses_video_only_stream_copy(tmp_path: Path, monkeypa
     assert commands[0][commands[0].index("-c:v") + 1] == "copy"
 
 
+def test_remove_audio_track_trims_the_leading_second_before_muting(
+    tmp_path: Path, monkeypatch
+) -> None:
+    source = tmp_path / "generated_intro.mp4"
+    source.write_bytes(b"input")
+    output = tmp_path / "generated_intro.muted.mp4"
+    commands: list[list[str]] = []
+
+    monkeypatch.setattr(audio_module, "find_ffmpeg_executable", lambda value: Path("ffmpeg"))
+
+    def fake_run(command: list[str], **kwargs):
+        commands.append(command)
+        output.write_bytes(b"trimmed video only")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(audio_module.subprocess, "run", fake_run)
+
+    result = remove_audio_track(source, output, trim_start_sec=1.0)
+
+    assert result == output.resolve()
+    assert commands[0][commands[0].index("-ss") + 1] == "1.000"
+    assert commands[0].index("-ss") > commands[0].index("-i")
+    assert commands[0][commands[0].index("-c:v") + 1] == "libx264"
+    assert "-an" in commands[0]
+
+
 def test_missing_generated_intro_falls_back_to_existing_make_video(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -79,6 +105,9 @@ def test_generated_intro_replaces_only_first_visual(tmp_path: Path) -> None:
     assert visuals[1]["source"] == "local"
     assert visuals[1]["local_file_path"] == str(intro)
     assert visuals[1]["selected_quality"] == "original"
+    assert visuals[1]["asset_id"] is None
+    assert "pexels_id" not in visuals[1]
+    assert "photographer" not in visuals[1]
     assert visuals[0]["asset_id"] == "second"
 
 

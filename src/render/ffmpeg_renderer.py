@@ -355,7 +355,7 @@ def _visual_segments(
         visuals,
         key=lambda item: float(item.get("video_start_sec") or item.get("index") or 0),
     ):
-        if not visual.get("asset_id"):
+        if not _is_renderable_visual(visual):
             continue
         input_path = Path(str(visual["local_file_path"]))
         if not input_path.is_file():
@@ -505,7 +505,7 @@ def _timeline_output_options(
 def _visual_background_segments(visuals: list[dict] | None) -> list[FfmpegVideoSegment]:
     if not visuals:
         return []
-    valid_visuals = [visual for visual in visuals if visual.get("asset_id")]
+    valid_visuals = [visual for visual in visuals if _is_renderable_visual(visual)]
     segments: list[FfmpegVideoSegment] = []
     for index, visual in enumerate(valid_visuals):
         path = Path(visual["local_file_path"])
@@ -542,7 +542,7 @@ def _visual_background_path(visuals: list[dict] | None) -> Path | None:
     if not visuals:
         return None
     for visual in visuals:
-        if not visual.get("asset_id"):
+        if not _is_renderable_visual(visual):
             continue
         path = Path(visual["local_file_path"])
         if path.is_file():
@@ -553,6 +553,17 @@ def _visual_background_path(visuals: list[dict] | None) -> Path | None:
             next_step="Re-import the media manifest or fix the asset local_file_path.",
         )
     return None
+
+
+def _is_renderable_visual(visual: dict[str, Any]) -> bool:
+    """Return whether a visual has a local video path accepted by the renderer.
+
+    Generated intro clips are intentionally not registered in ``media_assets`` and
+    therefore have no ``asset_id``.  They remain valid local render inputs.
+    """
+    return bool(visual.get("local_file_path")) and (
+        bool(visual.get("asset_id")) or visual.get("source") == "local"
+    )
 
 
 def _bgm_filter(

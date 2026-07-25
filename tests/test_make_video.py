@@ -587,6 +587,56 @@ def test_make_video_uses_cli_visual_keywords_for_actual_pexels_query_project(
     assert render_project == fetch_project
 
 
+def test_make_video_falls_back_unknown_bgm_mood_before_schema_validation(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project = _project()
+    project["bgm"]["mood"] = "curious"
+    project_path = tmp_path / "project.youtube.json"
+    project_path.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+    render_projects: list[dict[str, Any]] = []
+    monkeypatch.setattr(make_video_module, "RENDERS_DIR", tmp_path / "renders")
+    monkeypatch.setattr(make_video_module, "init_db", lambda: None)
+    monkeypatch.setattr(make_video_module, "_fetch_visuals", lambda *args, **kwargs: {})
+    monkeypatch.setattr(make_video_module, "_inspect_attempt", lambda *args: None)
+    monkeypatch.setattr(
+        make_video_module,
+        "evaluate_render",
+        lambda rendered_path: {
+            "summary": {"status": "pass", "error_count": 0, "warning_count": 0},
+            "checks": [],
+        },
+    )
+
+    def fake_render_attempt(
+        options: MakeVideoOptions,
+        project_path: Path,
+        attempt_dir: Path,
+        rejected_asset_ids: set[str],
+        rejected_source_keys: set[str],
+    ) -> Path:
+        render_projects.append(json.loads(project_path.read_text(encoding="utf-8")))
+        attempt_dir.mkdir(parents=True, exist_ok=True)
+        rendered_path = attempt_dir / "rendered.youtube.json"
+        rendered_path.write_text(json.dumps({"visuals": []}), encoding="utf-8")
+        return rendered_path
+
+    monkeypatch.setattr(make_video_module, "_render_attempt", fake_render_attempt)
+
+    result = make_video(
+        MakeVideoOptions(
+            project_path=project_path,
+            voice_mode="dry-run",
+            video_mode="dry-run",
+            max_fix_attempts=1,
+            skip_inspect=True,
+        )
+    )
+
+    assert result.exit_code == 0
+    assert render_projects[0]["bgm"]["mood"] == "mysterious"
+
+
 def test_make_video_caps_saved_fallback_queries_while_forwarding_all_cli_keywords(
     tmp_path: Path, monkeypatch
 ) -> None:

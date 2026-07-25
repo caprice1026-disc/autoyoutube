@@ -224,3 +224,37 @@ def test_visual_background_segments_include_gap_until_next_visual(
         FfmpegVideoSegment(path=first_path, duration_sec=1.4),
         FfmpegVideoSegment(path=second_path, duration_sec=1.6),
     ]
+
+
+def test_visual_background_segments_include_local_visual_without_asset_id(
+    tmp_path: Path,
+) -> None:
+    generated_intro_path = tmp_path / "generated_intro.muted.mp4"
+    pexels_path = tmp_path / "water.mp4"
+    generated_intro_path.write_bytes(b"generated intro")
+    pexels_path.write_bytes(b"pexels")
+    visuals = [
+        {
+            "asset_id": None,
+            "source": "local",
+            "local_file_path": str(generated_intro_path),
+            "video_start_sec": 0.0,
+            "video_end_sec": 5.2,
+            "used_duration_sec": 5.2,
+        },
+        {
+            "asset_id": "water",
+            "source": "pexels",
+            "local_file_path": str(pexels_path),
+            "video_start_sec": 5.2,
+            "video_end_sec": 8.0,
+            "used_duration_sec": 2.8,
+        },
+    ]
+
+    segments = _visual_background_segments(visuals)
+
+    assert segments == [
+        FfmpegVideoSegment(path=generated_intro_path, duration_sec=5.2),
+        FfmpegVideoSegment(path=pexels_path, duration_sec=2.8),
+    ]

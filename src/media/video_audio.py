@@ -12,8 +12,9 @@ def remove_audio_track(
     output_path: Path,
     *,
     ffmpeg_path: str | Path | None = None,
+    trim_start_sec: float = 0.0,
 ) -> Path:
-    """Write a video-only copy of *input_path*.
+    """Write a video-only version of *input_path*, optionally trimming its lead.
 
     Generated-video services may include dialogue, music, or ambient audio.  The
     project narration and BGM are mixed separately, so this helper removes every
@@ -36,13 +37,10 @@ def remove_audio_track(
         "-y",
         "-i",
         str(source),
-        "-map",
-        "0:v:0",
-        "-c:v",
-        "copy",
-        "-an",
-        str(destination),
     ]
+    if trim_start_sec > 0:
+        command.extend(["-ss", f"{trim_start_sec:.3f}"])
+    command.extend(["-map", "0:v:0", "-c:v", "libx264" if trim_start_sec > 0 else "copy", "-an", str(destination)])
     result = subprocess.run(
         command,
         capture_output=True,

@@ -6,11 +6,11 @@ from typing import Any
 import src.pipeline.make_video as make_video_module
 from src.pipeline.make_video import MakeVideoOptions, MakeVideoResult
 from src.render.ffmpeg_renderer import FfmpegVideoRenderer
-from src.utils.file_hash import sha256_file
 from src.media.video_audio import remove_audio_track
 
 DEFAULT_GENERATED_INTRO_FILENAME = "generated_intro.mp4"
 MUTED_GENERATED_INTRO_FILENAME = "generated_intro.muted.mp4"
+GENERATED_INTRO_TRIM_START_SEC = 1.0
 
 
 def make_video_with_generated_intro(
@@ -55,8 +55,12 @@ def make_video_with_generated_intro(
             source_path,
             project_path.parent / MUTED_GENERATED_INTRO_FILENAME,
             ffmpeg_path=options.ffmpeg_path,
+            trim_start_sec=GENERATED_INTRO_TRIM_START_SEC,
         )
-        _log(f"removed generated intro audio: {intro_path}")
+        _log(
+            "removed generated intro audio and trimmed its leading "
+            f"{GENERATED_INTRO_TRIM_START_SEC:.1f}s: {intro_path}"
+        )
 
     original_renderer = make_video_module.FfmpegVideoRenderer
     generated_intro = intro_path.resolve()
@@ -108,9 +112,19 @@ def _replace_first_visual(
         visuals,
         key=lambda item: float(item.get("video_start_sec") or item.get("index") or 0),
     )
+    for key in (
+        "pexels_id",
+        "photographer",
+        "photographer_url",
+        "pexels_url",
+        "original_video_url",
+    ):
+        first.pop(key, None)
     first.update(
         {
-            "asset_id": f"generated_intro_{sha256_file(generated_intro_path)[7:19]}",
+            # render_visuals.asset_id references media_assets. A manually
+            # generated local clip is intentionally not a fetched media asset.
+            "asset_id": None,
             "source": "local",
             "local_file_path": str(generated_intro_path),
             "selected_quality": "original",

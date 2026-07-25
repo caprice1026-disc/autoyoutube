@@ -66,7 +66,7 @@ class MakeVideoResult:
 
 def make_video(options: MakeVideoOptions) -> MakeVideoResult:
     project_path = options.project_path.resolve()
-    project = load_json(project_path)
+    project = _project_with_schema_fallbacks(load_json(project_path))
     _validate_project(project, project_path)
     config = load_auto_repair_config(options.config_path)
     max_attempts = resolve_max_fix_attempts(
@@ -316,6 +316,31 @@ def _validate_project(project: dict[str, Any], project_path: Path) -> None:
             details="\n".join(error.to_text() for error in errors),
             next_step="Fix project JSON schema errors and run make-video again.",
         )
+
+
+def _project_with_schema_fallbacks(project: dict[str, Any]) -> dict[str, Any]:
+    schema = load_json(PROJECT_SCHEMA_PATH)
+    allowed_moods = set(
+        schema.get("properties", {})
+        .get("bgm", {})
+        .get("properties", {})
+        .get("mood", {})
+        .get("enum", [])
+    )
+    fallback_mood = "mysterious"
+    bgm = project.get("bgm")
+    if (
+        isinstance(bgm, dict)
+        and "mood" in bgm
+        and fallback_mood in allowed_moods
+        and bgm.get("mood") not in allowed_moods
+    ):
+        updated = json.loads(json.dumps(project, ensure_ascii=False))
+        before = updated["bgm"].get("mood")
+        updated["bgm"]["mood"] = fallback_mood
+        _log(f"bgm.mood '{before}' is outside schema; using '{fallback_mood}'")
+        return updated
+    return project
 
 
 def _build_plan(
