@@ -99,7 +99,7 @@ YouTube Analytics APIの`day`ディメンションとPT日境界、既存SQLite�
 
 - 品質レポートは`status/error_count/warning_count/info_count/metrics_json/checks_json/raw_report_json/quality_report_hash/source_path/imported_at`を保持する列へ移行し、既存48件をバックフィル済み。
 - 成熟度、ビュー信頼度、グループ閾値、中央値/IQR、日次キャッシュ、±12時間フォールバック、スナップショット差分、制作特徴、根拠付き提案をJSONで検証済み。
-- 全pytestは154件通過、Ruffも通過。実CLIは成功し、認証・クエリ失敗時の部分成功もfixtureで確認済み。変更の再コミット・push前の最終差分確認へ進む。
+- 全pytestは154件通過、Ruffも通過。実CLIは成功し、認証・クエリ失敗時の部分成功もfixtureで確認済み。コミット `cec77b8` を `origin/master` へpush済み。
 
 ## 2026-07-25 Completion Audit Update
 
@@ -108,4 +108,4 @@ YouTube Analytics APIの`day`ディメンションとPT日境界、既存SQLite�
 - `tests/test_youtube_analytics_analysis.py` にD1/D3/D7/D28全窓、views null、グループ2/3/4/5、スナップショット±12時間の境界を追加した。
 - 監査後の証拠は、Ruff成功、pytest全件成功、認証済み実CLI成功、JSON/SQLiteの必須項目確認、禁止生成物がGit対象外であること、変更をpushする前のmaster差分確認である。
 
-この更新は、前回の実装完了記録と現在の検証結果を一致させ、貼付ゴールに記載された境界テストの不足を補うために行った（2026-07-25）。
+この更新は、前回の実装完了記録と現在の検証結果を一致させ、貼付ゴールに記載された境界テストの不足を補うために行った（2026-07-25）。最終コミットは `cec77b8` で、`master` と `origin/master` のHEADは一致している。
