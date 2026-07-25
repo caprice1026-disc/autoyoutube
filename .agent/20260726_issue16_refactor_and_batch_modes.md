@@ -17,7 +17,7 @@ Issue #16で確認したとおり、動画生成・品質評価・分析の入�
 - [x] (2026-07-26) renderの説明・クレジット・字幕・BGMメタデータ生成を純粋ビルダーへ分離した。
 - [x] (2026-07-26) quality評価のドメイン別ディスパッチ境界とanalytics表示層を追加した。
 - [x] (2026-07-26) 一括ランナーで通常動画と生成AIイントロ動画を混在実行できるようにし、回帰テストを追加した。
-- [x] (2026-07-26) Ruff、pytest、PowerShellのDryRun、構成差分を検証した。コミットとpushはこの計画更新後に行う。
+- [x] (2026-07-26) Ruff、pytest、PowerShellのDryRun、構成差分を検証し、`e0ca3da`を`origin/master`へpushした。
 
 ## Surprises & Discoveries
 
@@ -44,6 +44,8 @@ Issue #16で確認したとおり、動画生成・品質評価・分析の入�
 作業完了時に、抽出したモジュール、batの実行例、検証結果、残る技術的負債をここへ追記する。`projects/`または`data/`の構成差分が発生した場合は未達として扱い、生成物を削除・コミットせず原因を記録する。
 
 2026-07-26時点では、純粋処理層と品質チェックの順序付きディスパッチを追加し、通常・生成AIイントロの両ラッパーを含む一時一覧で`-PlanOnly -DryRun -RequireUploadYoutube`を実行して、両方の翻訳と生成AI素材の解決を確認した。Ruffはエラー0件、pytestは164件成功、`git diff --check`も問題なしだった。ローカルの無視対象`commands/upload_commands.txt`には両モードの実例を置いたが、意図された一時入力ファイルのためコミット対象から除外する。
+
+コミット`e0ca3da`は`master`から`origin/master`へpush済みで、push後の`git status -sb`は`master...origin/master`となっている。
 
 ## Context and Orientation
 
