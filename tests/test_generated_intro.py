@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from types import SimpleNamespace
 
 import src.media.video_audio as audio_module
 import src.pipeline.make_video_with_generated_intro as intro_module
