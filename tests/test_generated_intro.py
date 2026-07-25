@@ -1,0 +1,102 @@
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+
+import src.media.video_audio as audio_module
+import src.pipeline.make_video_with_generated_intro as intro_module
+from src.media.video_audio import remove_audio_track
+from src.pipeline.make_video import MakeVideoOptions, MakeVideoResult
+
+
+def test_remove_audio_track_uses_video_only_stream_copy(tmp_path: Path, monkeypatch) -> None:
+    source = tmp_path / "generated_intro.mp4"
+    source.write_bytes(b"input")
+    output = tmp_path / "generated_intro.muted.mp4"
+    commands: list[list[str]] = []
+
+    monkeypatch.setattr(audio_module, "find_ffmpeg_executable", lambda value: Path("ffmpeg"))
+
+    def fake_run(command: list[str], **kwargs):
+        commands.append(command)
+        output.write_bytes(b"video only")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(audio_module.subprocess, "run", fake_run)
+
+    result = remove_audio_track(source, output)
+
+    assert result == output.resolve()
+    assert "-an" in commands[0]
+    assert commands[0][commands[0].index("-map") + 1] == "0:v:0"
+    assert commands[0][commands[0].index("-c:v") + 1] == "copy"
+
+
+def test_missing_generated_intro_falls_back_to_existing_make_video(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project_path = tmp_path / "project.youtube.json"
+    project_path.write_text("{}", encoding="utf-8")
+    expected = MakeVideoResult(0, "success", None, None, {"stock": True})
+    calls: list[MakeVideoOptions] = []
+
+    def fake_make_video(options: MakeVideoOptions) -> MakeVideoResult:
+        calls.append(options)
+        return expected
+
+    monkeypatch.setattr(intro_module.make_video_module, "make_video", fake_make_video)
+
+    result = intro_module.make_video_with_generated_intro(
+        MakeVideoOptions(project_path=project_path)
+    )
+
+    assert result is expected
+    assert calls[0].project_path == project_path
+
+
+def test_generated_intro_replaces_only_first_visual(tmp_path: Path) -> None:
+    intro = tmp_path / "generated_intro.mp4"
+    intro.write_bytes(b"clip")
+    visuals = [
+        {
+            "index": 2,
+            "video_start_sec": 4.0,
+            "source": "pexels",
+            "asset_id": "second",
+            "local_file_path": "second.mp4",
+        },
+        {
+            "index": 1,
+            "video_start_sec": 0.0,
+            "source": "pexels",
+            "asset_id": "first",
+            "local_file_path": "first.mp4",
+        },
+    ]
+
+    intro_module._replace_first_visual(visuals, intro)
+
+    assert visuals[1]["source"] == "local"
+    assert visuals[1]["local_file_path"] == str(intro)
+    assert visuals[1]["selected_quality"] == "original"
+    assert visuals[0]["asset_id"] == "second"
+
+
+def test_plan_only_reports_available_generated_intro(tmp_path: Path, monkeypatch) -> None:
+    project_path = tmp_path / "project.youtube.json"
+    project_path.write_text("{}", encoding="utf-8")
+    (tmp_path / "generated_intro.mp4").write_bytes(b"clip")
+
+    monkeypatch.setattr(
+        intro_module.make_video_module,
+        "make_video",
+        lambda options: MakeVideoResult(0, "planned", None, None, {"queries": []}),
+    )
+
+    result = intro_module.make_video_with_generated_intro(
+        MakeVideoOptions(project_path=project_path, plan_only=True)
+    )
+
+    assert result.plan["generated_intro"]["status"] == "available"
+    assert result.plan["generated_intro"]["audio_policy"] == "remove"
+    assert result.plan["generated_intro"]["placement"] == "replace_first_visual"
