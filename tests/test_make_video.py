@@ -6,8 +6,12 @@ from types import SimpleNamespace
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 import src.main as main_module
 import src.pipeline.make_video as make_video_module
+import src.pipeline.project_normalization as project_normalization_module
+from src.errors import AppError
 from src.pipeline.make_video import MakeVideoOptions, make_video
 
 
@@ -148,6 +152,62 @@ def test_make_video_plan_only_reports_queries_without_side_effects(
     assert (
         "[make-video] plan-only: no render or external fetch will run" in captured.out
     )
+
+
+def test_make_video_appends_end_cta_to_render_input_without_mutating_source(
+    tmp_path: Path, monkeypatch
+) -> None:
+    project_path = _write_project(tmp_path)
+    monkeypatch.setattr(make_video_module, "RENDERS_DIR", tmp_path / "renders")
+    monkeypatch.setattr(make_video_module, "init_db", lambda: None)
+    monkeypatch.setattr(
+        make_video_module, "_fetch_visuals", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        make_video_module, "_inspect_attempt", lambda *args, **kwargs: None
+    )
+
+    result = make_video(
+        MakeVideoOptions(
+            project_path=project_path,
+            append_end_cta=True,
+            dry_run=True,
+            skip_fetch_visuals=True,
+            skip_inspect=True,
+            skip_evaluate=True,
+            seed=123,
+        )
+    )
+
+    assert result.exit_code == 0
+    assert result.run_dir is not None
+    saved_project = json.loads(
+        (result.run_dir / "inputs" / "project.final.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert saved_project["script"][-1] == {
+        "index": 4,
+        "text": "高評価とチャンネル登録、ぜひお願いします！",
+        "visual_query": "youtube like subscribe button animation vertical",
+        "estimated_duration_sec": 3.0,
+        "caption_style_hint": "punchline",
+    }
+    assert result.plan["end_cta"] == {
+        "enabled": True,
+        "text": "高評価とチャンネル登録、ぜひお願いします！",
+        "visual_query": "youtube like subscribe button animation vertical",
+    }
+    source_project = json.loads(project_path.read_text(encoding="utf-8"))
+    assert len(source_project["script"]) == 3
+
+
+def test_end_cta_rejects_project_at_script_item_limit() -> None:
+    project = _project()
+    project["script"] = project["script"] * 6
+
+    with pytest.raises(AppError, match="end CTA"):
+        project_normalization_module.project_with_end_cta(project)
 
 
 def test_make_video_dry_run_writes_attempt_final_and_logs(
@@ -735,6 +795,7 @@ def test_make_video_cli_passes_options(monkeypatch, capsys) -> None:
             "4",
             "--max-downloads",
             "20",
+            "--append-end-cta",
             "--plan-only",
         ],
     )
@@ -764,6 +825,7 @@ def test_make_video_cli_passes_options(monkeypatch, capsys) -> None:
     assert calls[0].query_mode == "fallback"
     assert calls[0].per_query == 4
     assert calls[0].max_downloads == 20
+    assert calls[0].append_end_cta is True
     assert calls[0].plan_only is True
     assert '"ok": true' in captured.out
 

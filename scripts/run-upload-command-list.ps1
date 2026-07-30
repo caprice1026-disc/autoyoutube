@@ -134,6 +134,7 @@ function Invoke-ConvertedCommand {
   if ($Command -match '--plan-only') { $psArgsText += '-PlanOnly' }
   if ($Command -match '--dry-run') { $psArgsText += '-DryRun' }
   if ($Command -match '--upload-youtube') { $psArgsText += '-UploadYoutube' }
+  if ($Command -match '--append-end-cta') { $psArgsText += '-AppendEndCta' }
   if ($Command -match '--skip-fetch-visuals') { $psArgsText += '-SkipFetchVisuals' }
   if ($Command -match '--skip-inspect') { $psArgsText += '-SkipInspect' }
   if ($Command -match '--skip-evaluate') { $psArgsText += '-SkipEvaluate' }

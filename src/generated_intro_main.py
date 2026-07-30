@@ -39,6 +39,7 @@ def main() -> int:
     parser.add_argument("--aivis-base-url")
     parser.add_argument("--ffmpeg-path")
     parser.add_argument("--bgm-id")
+    parser.add_argument("--append-end-cta", action="store_true")
     parser.add_argument("--seed", type=int)
     parser.add_argument("--max-fix-attempts", type=int)
     parser.add_argument("--no-auto-fix", action="store_true")
@@ -72,6 +73,7 @@ def main() -> int:
             aivis_base_url=args.aivis_base_url,
             ffmpeg_path=args.ffmpeg_path,
             bgm_id=args.bgm_id,
+            append_end_cta=args.append_end_cta,
             seed=args.seed,
             auto_fix=not args.no_auto_fix,
             max_fix_attempts=args.max_fix_attempts,

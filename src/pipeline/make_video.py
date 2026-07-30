@@ -20,8 +20,11 @@ from src.media.gemini_keyword_extractor import extract_keywords_for_project
 from src.media.pexels_client import PexelsClient
 from src.media.visual_fetcher import fetch_visuals_for_project
 from src.pipeline.project_normalization import (
+    END_CTA_TEXT,
+    END_CTA_VISUAL_QUERY,
     normalize_project_for_schema,
     project_with_bgm_override as _project_with_bgm_override,
+    project_with_end_cta,
     project_with_visual_keywords,
     queries_for_plan,
 )
@@ -59,6 +62,7 @@ class MakeVideoOptions:
     aivis_base_url: str | None = None
     ffmpeg_path: str | None = None
     bgm_id: str | None = None
+    append_end_cta: bool = False
     seed: int | None = None
     auto_fix: bool = True
     max_fix_attempts: int | None = None
@@ -83,6 +87,10 @@ def make_video(options: MakeVideoOptions) -> MakeVideoResult:
     project_path = options.project_path.resolve()
     project = normalize_project_for_schema(load_json(project_path), log=_log)
     _validate_project(project, project_path)
+    project_with_cta = (
+        project_with_end_cta(project) if options.append_end_cta else project
+    )
+    _validate_project(project_with_cta, project_path)
     config = load_auto_repair_config(options.config_path)
     max_attempts = resolve_max_fix_attempts(
         cli_value=options.max_fix_attempts,
@@ -93,7 +101,7 @@ def make_video(options: MakeVideoOptions) -> MakeVideoResult:
         if options.seed is not None
         else random.SystemRandom().randint(1, 2**31 - 1)
     )
-    plan = _build_plan(options, project_path, project, max_attempts, seed)
+    plan = _build_plan(options, project_path, project_with_cta, max_attempts, seed)
     if options.plan_only:
         _log("plan-only: no render or external fetch will run")
         return MakeVideoResult(
@@ -110,13 +118,15 @@ def make_video(options: MakeVideoOptions) -> MakeVideoResult:
     attempts_dir = run_dir / "attempts"
     inputs_dir.mkdir(parents=True, exist_ok=True)
     attempts_dir.mkdir(parents=True, exist_ok=True)
-    _write_json(inputs_dir / "project.original.json", project)
+    _write_json(inputs_dir / "project.original.json", project_with_cta)
 
-    repair_log = _empty_repair_log(project, seed, max_attempts)
+    repair_log = _empty_repair_log(project_with_cta, seed, max_attempts)
     failure_log = _empty_failure_log()
     final_rendered_path: Path | None = None
     current_project = _project_with_bgm_override(project, options.bgm_id)
     current_project = _project_with_visual_keywords(current_project, options)
+    if options.append_end_cta:
+        current_project = project_with_end_cta(current_project)
     if options.dry_run:
         keyword_extraction = {
             "enabled": False,
@@ -358,6 +368,11 @@ def _build_plan(
             if options.bgm_id is None
             else "use_bgm_id",
             "default_track_hint": "No One Here Gets In Alive - National Sweetheart",
+        },
+        "end_cta": {
+            "enabled": options.append_end_cta,
+            "text": END_CTA_TEXT if options.append_end_cta else None,
+            "visual_query": END_CTA_VISUAL_QUERY if options.append_end_cta else None,
         },
         "voice_mode": "dry-run" if options.dry_run else options.voice_mode,
         "video_mode": "dry-run" if options.dry_run else options.video_mode,

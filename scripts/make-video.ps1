@@ -27,6 +27,7 @@ param(
   [switch]$PlanOnly,
   [switch]$DryRun,
   [switch]$UploadYoutube,
+  [switch]$AppendEndCta,
   [switch]$SkipFetchVisuals,
   [switch]$SkipInspect,
   [switch]$SkipEvaluate
@@ -87,6 +88,7 @@ if ($NoAutoFix) { $argsList += "--no-auto-fix" }
 if ($PlanOnly) { $argsList += "--plan-only" }
 if ($DryRun) { $argsList += "--dry-run" }
 if ($UploadYoutube) { $argsList += "--upload-youtube" }
+if ($AppendEndCta) { $argsList += "--append-end-cta" }
 if ($SkipFetchVisuals) { $argsList += "--skip-fetch-visuals" }
 if ($SkipInspect) { $argsList += "--skip-inspect" }
 if ($SkipEvaluate) { $argsList += "--skip-evaluate" }

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 import src.media.video_audio as audio_module
+import src.generated_intro_main as generated_intro_main
 import src.pipeline.make_video_with_generated_intro as intro_module
 from src.media.video_audio import remove_audio_track
 from src.pipeline.make_video import MakeVideoOptions, MakeVideoResult
@@ -129,3 +131,32 @@ def test_plan_only_reports_available_generated_intro(tmp_path: Path, monkeypatch
     assert result.plan["generated_intro"]["status"] == "available"
     assert result.plan["generated_intro"]["audio_policy"] == "remove"
     assert result.plan["generated_intro"]["placement"] == "replace_first_visual"
+
+
+def test_generated_intro_cli_passes_end_cta_option(monkeypatch, capsys) -> None:
+    calls: list[MakeVideoOptions] = []
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "generated-intro",
+            "projects/sample/project.youtube.json",
+            "--append-end-cta",
+            "--plan-only",
+        ],
+    )
+    monkeypatch.setattr(generated_intro_main, "load_dotenv", lambda: None)
+    monkeypatch.setattr(
+        generated_intro_main,
+        "make_video_with_generated_intro",
+        lambda options, **kwargs: (
+            calls.append(options)
+            or MakeVideoResult(0, "planned", None, None, {"ok": True})
+        ),
+    )
+
+    exit_code = generated_intro_main.main()
+
+    assert exit_code == 0
+    assert calls[0].append_end_cta is True
+    assert '"ok": true' in capsys.readouterr().out

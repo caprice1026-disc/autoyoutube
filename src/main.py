@@ -127,6 +127,11 @@ def main() -> int:
     mv.add_argument("--aivis-base-url")
     mv.add_argument("--ffmpeg-path")
     mv.add_argument("--bgm-id")
+    mv.add_argument(
+        "--append-end-cta",
+        action="store_true",
+        help="append a spoken like-and-subscribe call to action to the video ending",
+    )
     mv.add_argument("--seed", type=int)
     auto_fix_group = mv.add_mutually_exclusive_group()
     auto_fix_group.add_argument("--auto-fix", dest="auto_fix", action="store_true")
@@ -483,6 +488,7 @@ def _make_video(args: argparse.Namespace) -> int:
             aivis_base_url=args.aivis_base_url,
             ffmpeg_path=args.ffmpeg_path,
             bgm_id=args.bgm_id,
+            append_end_cta=args.append_end_cta,
             seed=args.seed,
             auto_fix=args.auto_fix,
             max_fix_attempts=args.max_fix_attempts,

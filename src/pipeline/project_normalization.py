@@ -5,9 +5,15 @@ from pathlib import Path
 from typing import Any, Callable
 
 from src.config import PROJECT_SCHEMA_PATH
+from src.errors import AppError
 from src.validators.json_validator import load_json
 
 Log = Callable[[str], None]
+
+END_CTA_TEXT = "高評価とチャンネル登録、ぜひお願いします！"
+END_CTA_VISUAL_QUERY = "youtube like subscribe button animation vertical"
+END_CTA_ESTIMATED_DURATION_SEC = 3.0
+MAX_SCRIPT_ITEMS = 18
 
 
 def normalize_project_for_schema(
@@ -52,6 +58,36 @@ def project_with_bgm_override(
     bgm = updated.setdefault("bgm", {})
     if isinstance(bgm, dict):
         bgm["track_id"] = bgm_id
+    return updated
+
+
+def project_with_end_cta(project: dict[str, Any]) -> dict[str, Any]:
+    script = project.get("script")
+    if not isinstance(script, list) or len(script) >= MAX_SCRIPT_ITEMS:
+        raise AppError(
+            "Cannot append end CTA because the project already has 18 script items.",
+            location="script",
+            next_step=(
+                "Remove or combine an existing script item, then run make-video "
+                "with --append-end-cta again."
+            ),
+        )
+
+    updated = _copy_project(project)
+    updated_script = updated["script"]
+    next_index = max(
+        (int(item.get("index", 0)) for item in updated_script if isinstance(item, dict)),
+        default=0,
+    ) + 1
+    updated_script.append(
+        {
+            "index": next_index,
+            "text": END_CTA_TEXT,
+            "visual_query": END_CTA_VISUAL_QUERY,
+            "estimated_duration_sec": END_CTA_ESTIMATED_DURATION_SEC,
+            "caption_style_hint": "punchline",
+        }
+    )
     return updated
 
 

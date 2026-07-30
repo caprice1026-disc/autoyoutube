@@ -6,7 +6,11 @@ from urllib import request
 import pytest
 
 from src.errors import AppError
-from src.media.pexels_client import PexelsClient, UrlLibPexelsTransport
+from src.media.pexels_client import (
+    PexelsClient,
+    UrlLibPexelsTransport,
+    _select_video_file,
+)
 
 
 class FakeTransport:
@@ -126,3 +130,59 @@ def test_url_lib_transport_sends_user_agent(monkeypatch) -> None:
     transport.get_json("/v1/videos/search", {"query": "ocean"})
 
     assert captured_headers["User-agent"] == "TriviaShortsMaker/0.1"
+
+
+def test_url_lib_transport_download_streams_chunks_to_disk(monkeypatch, tmp_path: Path) -> None:
+    read_sizes: list[int] = []
+
+    class ChunkedResponse:
+        def __init__(self) -> None:
+            self.chunks = [b"first", b"second", b""]
+
+        def __enter__(self) -> "ChunkedResponse":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def read(self, size: int) -> bytes:
+            read_sizes.append(size)
+            return self.chunks.pop(0)
+
+    def fake_urlopen(req: request.Request, timeout: float) -> ChunkedResponse:
+        return ChunkedResponse()
+
+    monkeypatch.setattr(request, "urlopen", fake_urlopen)
+    output_path = tmp_path / "download.mp4"
+
+    UrlLibPexelsTransport("test-key").download(
+        "https://videos.pexels.com/video-files/test.mp4", output_path
+    )
+
+    assert output_path.read_bytes() == b"firstsecond"
+    assert read_sizes == [64 * 1024, 64 * 1024, 64 * 1024]
+
+
+def test_select_video_file_prefers_smallest_portrait_file_at_target_resolution() -> None:
+    video = {
+        "video_files": [
+            {
+                "quality": "uhd",
+                "file_type": "video/mp4",
+                "width": 2160,
+                "height": 3840,
+                "link": "https://videos.pexels.com/video-files/uhd.mp4",
+            },
+            {
+                "quality": "hd",
+                "file_type": "video/mp4",
+                "width": 1080,
+                "height": 1920,
+                "link": "https://videos.pexels.com/video-files/hd.mp4",
+            },
+        ]
+    }
+
+    selected = _select_video_file(video, "portrait")
+
+    assert selected["quality"] == "hd"

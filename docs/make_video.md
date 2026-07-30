@@ -129,6 +129,30 @@ renders/<YYYYMMDDHHMM-title>/
 .\.venv\Scripts\python.exe -m src.main youtube-auth
 ```
 
+## 終端CTA（高評価・チャンネル登録の呼びかけ）
+
+末尾に「高評価とチャンネル登録、ぜひお願いします！」という音声・字幕を追加するには、`--append-end-cta` を付けます。CTA用の映像も通常のPexels取得・映像選択フローで用意され、元の `project.youtube.json` は変更されません。
+
+```powershell
+.\scripts\make-video.ps1 `
+  -ProjectPath "projects\example_project.youtube.json" `
+  -AppendEndCta
+```
+
+Python CLIでは次のように指定します。
+
+```powershell
+.\.venv\Scripts\python.exe -m src.main make-video projects\example_project.youtube.json --append-end-cta
+```
+
+生成AI導入動画にも同じフラグを使えます。
+
+```powershell
+.\scripts\make-video-with-generated-intro.ps1 `
+  -ProjectPath "projects\example_project.youtube.json" `
+  -AppendEndCta
+```
+
 ## Exit code
 
 - `0`: 成功

@@ -68,7 +68,9 @@ class UrlLibPexelsTransport:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             with request.urlopen(req, timeout=self.timeout) as response:
-                output_path.write_bytes(response.read())
+                with output_path.open("wb") as handle:
+                    while chunk := response.read(64 * 1024):
+                        handle.write(chunk)
         except error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
             raise AppError(
@@ -254,11 +256,33 @@ def _select_video_file(
             )
             == preferred_orientation
             else 1,
+            0 if _meets_target_resolution(item, preferred_orientation) else 1,
+            _pixel_area(item)
+            if _meets_target_resolution(item, preferred_orientation)
+            else -_quality_rank(item.get("quality")),
             -_quality_rank(item.get("quality")),
-            -(_optional_int(item.get("width")) or 0)
-            * (_optional_int(item.get("height")) or 0),
         ),
     )[0]
+
+
+def _meets_target_resolution(
+    video_file: dict[str, Any], preferred_orientation: str | None
+) -> bool:
+    width = _optional_int(video_file.get("width")) or 0
+    height = _optional_int(video_file.get("height")) or 0
+    if preferred_orientation == "portrait":
+        return width >= 1080 and height >= 1920
+    if preferred_orientation == "landscape":
+        return width >= 1920 and height >= 1080
+    if preferred_orientation == "square":
+        return width >= 1080 and height >= 1080
+    return width >= 1080 and height >= 1080
+
+
+def _pixel_area(video_file: dict[str, Any]) -> int:
+    return (_optional_int(video_file.get("width")) or 0) * (
+        _optional_int(video_file.get("height")) or 0
+    )
 
 
 def _unique_non_empty(values: list[str]) -> list[str]:
