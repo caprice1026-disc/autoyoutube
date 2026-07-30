@@ -15,7 +15,7 @@
 - [x] (2026-07-30 13:20Z) 失敗する回帰テストを追加し、未実装時に `append_end_cta` の未定義、CLIフラグ未認識、PowerShell入口未対応で失敗することを確認した。
 - [x] (2026-07-30 13:35Z) `MakeVideoOptions`、CLI、実行用プロジェクト正規化、PowerShellラッパー、生成AI導入CLI、バッチランナーを最小限変更した。
 - [x] (2026-07-30 13:50Z) 対象テスト21件、Ruff、全pytestを実行し、既存Pexels改善分を含む差分を確認した（全170件成功）。
-- [ ] このExec Planの結果を更新し、意図した全変更をコミットして `origin/master` へpushする。
+- [x] (2026-07-30 14:05Z) 意図した全変更をコミット `f39c1dc` として確定し、`origin/master` へpushした。
 
 ## Surprises & Discoveries
 
@@ -54,7 +54,7 @@
 
 ## Outcomes & Retrospective
 
-実装は完了し、対象21テストと全170件のpytestが通過した。`--append-end-cta --plan-only`、生成AI導入CLI、`-AppendEndCta -PlanOnly` のPowerShellラッパーで、CTA文言と専用映像検索語が計画に出ることを確認した。Ruffは違反なしで、残作業はコミットとpushだけである。
+実装は完了し、対象21テストと全170件のpytestが通過した。`--append-end-cta --plan-only`、生成AI導入CLI、`-AppendEndCta -PlanOnly` のPowerShellラッパーで、CTA文言と専用映像検索語が計画に出ることを確認した。Ruffは違反なしで、実装と既存Pexels改善を含むコミット `f39c1dc` は `origin/master` へpush済みである。
 
 ## Context and Orientation
 
@@ -142,3 +142,5 @@ CTAは入力プロジェクトを深いコピーして実行ディレクトリ�
 2026-07-30 / Codex: テスト先行で実装し、CTAの視覚素材はCLIキーワードの上書き処理後に末尾台本へ追加することにした。これにより `--query-mode override` でもCTA専用の映像検索語を失わない。
 
 2026-07-30 / Codex: 実装後の対象テストは21件、全pytestは170件成功した。通常CLI、生成AI導入CLI、PowerShellラッパーのplan-only実行でCTAのエンドツーエンド引数伝搬を確認した。
+
+2026-07-30 / Codex: コミット `f39c1dc Add optional end CTA to video workflow` を `origin/master` へpushし、完了した。
