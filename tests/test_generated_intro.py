@@ -4,9 +4,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 import src.media.video_audio as audio_module
 import src.generated_intro_main as generated_intro_main
 import src.pipeline.make_video_with_generated_intro as intro_module
+from src.errors import AppError
 from src.media.video_audio import remove_audio_track
 from src.pipeline.make_video import MakeVideoOptions, MakeVideoResult
 
@@ -80,6 +83,46 @@ def test_missing_generated_intro_falls_back_to_existing_make_video(
 
     assert result is expected
     assert calls[0].project_path == project_path
+
+
+def test_generated_intro_uses_the_only_project_video_when_default_is_absent(
+    tmp_path: Path,
+) -> None:
+    project_path = tmp_path / "project.youtube.json"
+    project_path.write_text("{}", encoding="utf-8")
+    intro = tmp_path / "ai-created-intro.mov"
+    intro.write_bytes(b"clip")
+
+    result = intro_module._resolve_generated_intro_path(project_path, None)
+
+    assert result == intro.resolve()
+
+
+def test_generated_intro_prefers_legacy_default_name_over_other_project_video(
+    tmp_path: Path,
+) -> None:
+    project_path = tmp_path / "project.youtube.json"
+    project_path.write_text("{}", encoding="utf-8")
+    default_intro = tmp_path / "generated_intro.mp4"
+    default_intro.write_bytes(b"legacy clip")
+    (tmp_path / "ai-created-intro.mov").write_bytes(b"other clip")
+
+    result = intro_module._resolve_generated_intro_path(project_path, None)
+
+    assert result == default_intro.resolve()
+
+
+def test_generated_intro_rejects_multiple_project_videos_when_default_is_absent(
+    tmp_path: Path,
+) -> None:
+    project_path = tmp_path / "project.youtube.json"
+    project_path.write_text("{}", encoding="utf-8")
+    (tmp_path / "first-intro.mp4").write_bytes(b"first clip")
+    (tmp_path / "second-intro.webm").write_bytes(b"second clip")
+    (tmp_path / "generated_intro.muted.mp4").write_bytes(b"derived clip")
+
+    with pytest.raises(AppError, match="Multiple generated intro videos"):
+        intro_module._resolve_generated_intro_path(project_path, None)
 
 
 def test_generated_intro_replaces_only_first_visual(tmp_path: Path) -> None:

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from src.errors import AppError
 import src.pipeline.make_video as make_video_module
 from src.pipeline.make_video import MakeVideoOptions, MakeVideoResult
 from src.render.ffmpeg_renderer import FfmpegVideoRenderer
@@ -11,6 +12,9 @@ from src.media.video_audio import remove_audio_track
 DEFAULT_GENERATED_INTRO_FILENAME = "generated_intro.mp4"
 MUTED_GENERATED_INTRO_FILENAME = "generated_intro.muted.mp4"
 GENERATED_INTRO_TRIM_START_SEC = 1.0
+GENERATED_INTRO_VIDEO_SUFFIXES = frozenset(
+    {".avi", ".m4v", ".mkv", ".mov", ".mp4", ".webm"}
+)
 
 
 def make_video_with_generated_intro(
@@ -96,11 +100,42 @@ def make_video_with_generated_intro(
 def _resolve_generated_intro_path(
     project_path: Path, explicit_path: Path | None
 ) -> Path | None:
-    candidate = explicit_path or Path(DEFAULT_GENERATED_INTRO_FILENAME)
-    if not candidate.is_absolute():
-        candidate = project_path.parent / candidate
-    candidate = candidate.resolve()
-    return candidate if candidate.is_file() else None
+    project_dir = project_path.parent
+    if explicit_path is not None:
+        candidate = explicit_path
+        if not candidate.is_absolute():
+            candidate = project_dir / candidate
+        candidate = candidate.resolve()
+        return candidate if candidate.is_file() else None
+
+    default_candidate = (project_dir / DEFAULT_GENERATED_INTRO_FILENAME).resolve()
+    if default_candidate.is_file():
+        return default_candidate
+
+    candidates = sorted(
+        (
+            candidate.resolve()
+            for candidate in project_dir.iterdir()
+            if candidate.is_file()
+            and candidate.name.casefold()
+            != MUTED_GENERATED_INTRO_FILENAME.casefold()
+            and candidate.suffix.casefold() in GENERATED_INTRO_VIDEO_SUFFIXES
+        ),
+        key=lambda candidate: candidate.name.casefold(),
+    )
+    if len(candidates) == 1:
+        return candidates[0]
+    if len(candidates) > 1:
+        raise AppError(
+            "Multiple generated intro videos were found.",
+            location=str(project_dir),
+            details="Candidates: " + ", ".join(candidate.name for candidate in candidates),
+            next_step=(
+                "Keep only one video beside project.youtube.json, rename the intended "
+                "file to generated_intro.mp4, or pass --generated-intro-path."
+            ),
+        )
+    return None
 
 
 def _replace_first_visual(

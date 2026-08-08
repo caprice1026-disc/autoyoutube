@@ -6,17 +6,19 @@
 
 ## 配置方法
 
-各projectディレクトリへ、生成した動画を次の名前で配置します。
+各projectディレクトリの `project.youtube.json` と同じ階層に、生成した動画を1本配置します。
 
 ```text
 projects/<project_id>/
 ├─ project.youtube.json
-└─ generated_intro.mp4
+└─ <生成した動画ファイル>
 ```
+
+`generated_intro.mp4` があれば従来どおり最優先で使用します。存在しない場合は、同じ階層にある唯一の動画ファイル（`.mp4`、`.mov`、`.m4v`、`.webm`、`.avi`、`.mkv`）を自動で使用します。サブディレクトリ内の動画と、レンダリング時に作られる `generated_intro.muted.mp4` は候補に含みません。
 
 動画の長さは固定しません。既存タイムラインの最初のナレーション区間に合わせて、FFmpegがループまたはトリミングします。
 
-別名のファイルを使用する場合は `--generated-intro-path` または `-GeneratedIntroPath` を指定します。相対パスは `project.youtube.json` のあるディレクトリを基準に解決されます。
+同階層に候補動画が複数ある場合は、意図しない動画を選ばないようエラーで停止します。不要な動画を移動するか、`generated_intro.mp4` にリネームするか、`--generated-intro-path` または `-GeneratedIntroPath` を指定してください。明示パスは常に自動検出より優先され、相対パスは `project.youtube.json` のあるディレクトリを基準に解決されます。
 
 ## 実行方法
 
@@ -60,7 +62,7 @@ scripts/make-video-with-generated-intro.sh \
 
 ## フォールバック
 
-`generated_intro.mp4` が存在しない場合、このコマンドはエラーにせず既存の `make-video` へフォールバックします。
+生成AIイントロの候補が1本もない場合、このコマンドはエラーにせず既存の `make-video` へフォールバックします。
 
 フォールバック時は既存処理がそのまま動作します。
 
@@ -70,7 +72,7 @@ scripts/make-video-with-generated-intro.sh \
 4. 音声、字幕、BGM、映像のレンダリング
 5. inspect、quality評価、自動修復
 
-明示した `--generated-intro-path` が見つからない場合も同じフォールバックになります。
+明示した `--generated-intro-path` が見つからない場合も同じフォールバックになります。自動検出の候補が複数ある場合だけは、選択を曖昧にしないためフォールバックせずエラーにします。
 
 ## 後方互換性
 
