@@ -210,6 +210,10 @@ __marimo__/
 data/*.db
 data/youtube_token.json
 data/youtube_analytics_summary.json
+data/youtube_analytics_summary_28d.json
+data/youtube_analytics_summary_all.json
+data/youtube_analytics_evaluation.json
+data/youtube_analytics_evaluation.md
 data/llm_keyword_cache.json
 data/aivis-engine/
 secrets/

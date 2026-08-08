@@ -188,14 +188,14 @@ def test_make_video_appends_end_cta_to_render_input_without_mutating_source(
     )
     assert saved_project["script"][-1] == {
         "index": 4,
-        "text": "高評価とチャンネル登録、ぜひお願いします！",
+        "text": "おもしろければチャンネル登録と高評価、ぜひお願いします。",
         "visual_query": "youtube like subscribe button animation vertical",
         "estimated_duration_sec": 3.0,
         "caption_style_hint": "punchline",
     }
     assert result.plan["end_cta"] == {
         "enabled": True,
-        "text": "高評価とチャンネル登録、ぜひお願いします！",
+        "text": "おもしろければチャンネル登録と高評価、ぜひお願いします。",
         "visual_query": "youtube like subscribe button animation vertical",
     }
     source_project = json.loads(project_path.read_text(encoding="utf-8"))

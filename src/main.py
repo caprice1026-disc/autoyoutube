@@ -31,6 +31,11 @@ from src.youtube.analytics_summary import (
     format_console_summary,
     generate_youtube_analytics_summary,
 )
+from src.youtube.analytics_evaluation import (
+    build_dual_period_evaluation,
+    format_evaluation_console,
+    format_evaluation_markdown,
+)
 from src.youtube.auth import authorize_youtube_upload
 from src.youtube.uploader import upload_private_video
 
@@ -162,6 +167,26 @@ def main() -> int:
     yas.add_argument(
         "--output-path", default="data/youtube_analytics_summary.json"
     )
+    yae = sub.add_parser(
+        "youtube-analytics-evaluate",
+        help="refresh and compare recent and all-history YouTube Analytics",
+    )
+    yae.add_argument("--recent-days", type=int, default=28)
+    yae.add_argument("--history-days", type=int, default=3650)
+    yae.add_argument("--client-secrets", default="secrets/client_secret.json")
+    yae.add_argument("--token-path", default="data/youtube_token.json")
+    yae.add_argument(
+        "--recent-summary-output", default="data/youtube_analytics_summary_28d.json"
+    )
+    yae.add_argument(
+        "--history-summary-output", default="data/youtube_analytics_summary_all.json"
+    )
+    yae.add_argument(
+        "--output-path", default="data/youtube_analytics_evaluation.json"
+    )
+    yae.add_argument(
+        "--report-path", default="data/youtube_analytics_evaluation.md"
+    )
     uy = sub.add_parser(
         "upload-youtube", help="upload a rendered video to YouTube as private"
     )
@@ -248,6 +273,17 @@ def main() -> int:
                 client_secrets_path=Path(args.client_secrets),
                 token_path=Path(args.token_path),
                 output_path=Path(args.output_path),
+            )
+        if args.command == "youtube-analytics-evaluate":
+            return _youtube_analytics_evaluate(
+                recent_days=args.recent_days,
+                history_days=args.history_days,
+                client_secrets_path=Path(args.client_secrets),
+                token_path=Path(args.token_path),
+                recent_summary_output=Path(args.recent_summary_output),
+                history_summary_output=Path(args.history_summary_output),
+                output_path=Path(args.output_path),
+                report_path=Path(args.report_path),
             )
         if args.command == "upload-youtube":
             return _upload_youtube(Path(args.rendered_path), privacy=args.privacy)
@@ -453,6 +489,57 @@ def _youtube_analytics_summary(
     )
     print(f"YouTube analytics summary written: {output_path.as_posix()}")
     for line in format_console_summary(summary):
+        print(line)
+    return 0
+
+
+def _youtube_analytics_evaluate(
+    *,
+    recent_days: int,
+    history_days: int,
+    client_secrets_path: Path,
+    token_path: Path,
+    recent_summary_output: Path,
+    history_summary_output: Path,
+    output_path: Path,
+    report_path: Path,
+) -> int:
+    if recent_days < 1:
+        raise AppError(
+            "recent_days must be at least 1.",
+            details=f"recent_days={recent_days}",
+            next_step="Pass a positive integer to --recent-days.",
+        )
+    if history_days < 1:
+        raise AppError(
+            "history_days must be at least 1.",
+            details=f"history_days={history_days}",
+            next_step="Pass a positive integer to --history-days.",
+        )
+    recent_summary = generate_youtube_analytics_summary(
+        days=recent_days,
+        client_secrets_path=client_secrets_path,
+        token_path=token_path,
+        output_path=recent_summary_output,
+    )
+    history_summary = generate_youtube_analytics_summary(
+        days=history_days,
+        client_secrets_path=client_secrets_path,
+        token_path=token_path,
+        output_path=history_summary_output,
+    )
+    evaluation = build_dual_period_evaluation(recent_summary, history_summary)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(evaluation, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    report_path.write_text(format_evaluation_markdown(evaluation), encoding="utf-8")
+    print(f"Recent summary written: {recent_summary_output.as_posix()}")
+    print(f"History summary written: {history_summary_output.as_posix()}")
+    print(f"Evaluation JSON written: {output_path.as_posix()}")
+    print(f"Evaluation report written: {report_path.as_posix()}")
+    for line in format_evaluation_console(evaluation):
         print(line)
     return 0
 

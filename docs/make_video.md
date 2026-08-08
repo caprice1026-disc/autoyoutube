@@ -131,7 +131,7 @@ renders/<YYYYMMDDHHMM-title>/
 
 ## 終端CTA（高評価・チャンネル登録の呼びかけ）
 
-末尾に「高評価とチャンネル登録、ぜひお願いします！」という音声・字幕を追加するには、`--append-end-cta` を付けます。CTA用の映像も通常のPexels取得・映像選択フローで用意され、元の `project.youtube.json` は変更されません。
+末尾に「おもしろければチャンネル登録と高評価、ぜひお願いします。」という音声・字幕を追加するには、`--append-end-cta` を付けます。CTA用の映像も通常のPexels取得・映像選択フローで用意され、元の `project.youtube.json` は変更されません。
 
 ```powershell
 .\scripts\make-video.ps1 `

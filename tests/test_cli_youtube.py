@@ -171,3 +171,27 @@ def test_youtube_analytics_summary_cli_calls_summary_generator(
     ]
     assert "YouTube analytics summary written: data/youtube_analytics_summary.json" in captured.out
     assert "Analyzed videos: 1 / 1" in captured.out
+
+
+def test_youtube_analytics_evaluate_rejects_nonpositive_days_before_api_call(
+    monkeypatch, capsys
+) -> None:
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["tsm", "youtube-analytics-evaluate", "--recent-days", "0"],
+    )
+    monkeypatch.setattr(main_module, "load_dotenv", lambda: None)
+    monkeypatch.setattr(
+        main_module,
+        "generate_youtube_analytics_summary",
+        lambda **kwargs: calls.append(dict(kwargs)),
+    )
+
+    exit_code = main_module.main()
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert calls == []
+    assert "recent_days must be at least 1" in captured.err

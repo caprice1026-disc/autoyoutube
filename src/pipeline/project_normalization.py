@@ -10,7 +10,7 @@ from src.validators.json_validator import load_json
 
 Log = Callable[[str], None]
 
-END_CTA_TEXT = "高評価とチャンネル登録、ぜひお願いします！"
+END_CTA_TEXT = "おもしろければチャンネル登録と高評価、ぜひお願いします。"
 END_CTA_VISUAL_QUERY = "youtube like subscribe button animation vertical"
 END_CTA_ESTIMATED_DURATION_SEC = 3.0
 MAX_SCRIPT_ITEMS = 18
